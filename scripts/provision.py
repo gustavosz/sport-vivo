@@ -217,8 +217,8 @@ channels_config = [
     {
         "number": 3,
         "name": "TyC Sports",
-        "primary_stream_ids": [84021, 84023],  # Eagle 4K: |ARG| TYC SPORTS ᴬᴿᴳᴱᴺᵀᴵᴺᴬ ᴴᴰ, |ARG| TYC SPORTS
-        "backup_stream_ids": [50009, 50021],  # Trex OTT: ARG: TYC SPORTS RAW
+        "primary_stream_ids": [84023, 84267, 84021],  # Eagle 4K: |ARG| TYC SPORTS, CHL TyC Sports HD
+        "backup_stream_ids": [50009, 50021],          # Trex OTT: ARG: TYC SPORTS RAW
         "primary_hints": ["TYC SPORTS"],
         "backup_hints": ["TYC SPORTS RAW"],
     },

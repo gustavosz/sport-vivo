@@ -67,10 +67,16 @@ def save_history(data):
         print(f"⚠️  No se pudo persistir el historial: {e}")
 
 
-def get_viewing_telemetry(days=30):
-    """Extrae horas vistas y métricas de cortes desde core.SystemEvent."""
+def get_viewing_telemetry(provider=None, days=30):
+    """Extrae horas vistas y métricas de cortes exclusivas del proveedor."""
     since = timezone.now() - datetime.timedelta(days=days)
-    events = SystemEvent.objects.filter(timestamp__gte=since)
+    events = SystemEvent.objects.filter(timestamp__gte=since).order_by('timestamp')
+
+    # Identificar streams pertenecientes a este proveedor
+    provider_sids = set()
+    if provider:
+        Stream = apps.get_model('dispatcharr_channels', 'Stream')
+        provider_sids = set(Stream.objects.filter(m3u_account=provider).values_list('id', flat=True))
 
     total_viewing_seconds = 0.0
     sessions_count = 0
@@ -78,24 +84,37 @@ def get_viewing_telemetry(days=30):
     error_count = 0
     buffering_count = 0
 
+    current_stream_id = None
     for e in events:
         etype = e.event_type
-        if etype == 'client_disconnect' and isinstance(e.details, dict):
-            dur = float(e.details.get('duration', 0))
-            total_viewing_seconds += dur
-            sessions_count += 1
-        elif etype == 'channel_reconnect':
-            reconnect_count += 1
-        elif etype == 'channel_error':
-            error_count += 1
-        elif etype == 'channel_buffering':
-            buffering_count += 1
+        if etype == 'channel_start':
+            sid = e.details.get('stream_id') if isinstance(e.details, dict) else None
+            current_stream_id = sid
+
+        # Atribuir solo si no se especificó proveedor o si el stream activo pertenece a él
+        is_relevant = (not provider_sids) or (current_stream_id in provider_sids)
+        if is_relevant:
+            if etype == 'client_disconnect' and isinstance(e.details, dict):
+                dur = float(e.details.get('duration', 0))
+                total_viewing_seconds += dur
+                sessions_count += 1
+            elif etype == 'channel_reconnect':
+                reconnect_count += 1
+            elif etype == 'channel_error':
+                error_count += 1
+            elif etype == 'channel_buffering':
+                buffering_count += 1
+
+        if etype == 'channel_stop':
+            current_stream_id = None
 
     total_viewing_hours = total_viewing_seconds / 3600.0
     total_incidents = reconnect_count + error_count
-    
-    # Calcular cortes por hora (si hay al menos 6 minutos de datos)
-    if total_viewing_hours >= 0.1:
+
+    # Proveedor recién agregado / en periodo de prueba (menos de 1.5 horas de visualización real)
+    is_new = total_viewing_hours < 1.5
+
+    if not is_new and total_viewing_hours > 0:
         incidents_per_hour = total_incidents / total_viewing_hours
     else:
         incidents_per_hour = 0.0
@@ -106,7 +125,8 @@ def get_viewing_telemetry(days=30):
         "reconnects": reconnect_count,
         "errors": error_count,
         "buffer_events": buffering_count,
-        "incidents_per_hour": round(incidents_per_hour, 2)
+        "incidents_per_hour": round(incidents_per_hour, 2),
+        "is_new": is_new
     }
 
 
@@ -165,10 +185,11 @@ def calculate_quality_score(telemetry, benchmark_results):
       - 20%: Latencia de arranque (TTFB ms)
     """
     # 1. Estabilidad histórica (35 pts)
+    is_new = telemetry.get("is_new", False)
     iph = telemetry["incidents_per_hour"]
     hours = telemetry["viewing_hours"]
-    if hours < 0.1:
-        score_stability = 30  # Sin historial suficiente, neutro
+    if is_new:
+        score_stability = 35  # Sin penalización si es un proveedor recién agregado
     elif iph <= 0.5:
         score_stability = 35
     elif iph <= 1.5:
@@ -230,15 +251,26 @@ def calculate_quality_score(telemetry, benchmark_results):
     total_score = max(0, min(100, total_score))
 
     # Determinar veredicto
-    if total_score >= 80:
-        verdict = "RECOMENDADO RENOVAR"
-        badge = "🟢"
-    elif total_score >= 60:
-        verdict = "REGULAR (EVALUAR CON PRECAUCION)"
-        badge = "🟡"
+    if is_new:
+        if total_score >= 80:
+            verdict = "NUEVO (EXCELENTE EN TEST EN VIVO)"
+            badge = "🟢"
+        elif total_score >= 60:
+            verdict = "NUEVO (BUENO EN TEST EN VIVO)"
+            badge = "🟡"
+        else:
+            verdict = "NUEVO (REGULAR EN TEST EN VIVO)"
+            badge = "🟡"
     else:
-        verdict = "NO RENOVAR (ALTA INESTABILIDAD)"
-        badge = "🔴"
+        if total_score >= 80:
+            verdict = "RECOMENDADO RENOVAR"
+            badge = "🟢"
+        elif total_score >= 60:
+            verdict = "REGULAR (EVALUAR CON PRECAUCION)"
+            badge = "🟡"
+        else:
+            verdict = "NO RENOVAR (ALTA INESTABILIDAD)"
+            badge = "🔴"
 
     return {
         "total_score": total_score,
@@ -318,11 +350,17 @@ def run_audit():
 
     # 1. Telemetría de uso real
     print("\n📊 1. Analizando Telemetría de Visualización Real (Últimos 30 días)...")
-    telemetry = get_viewing_telemetry()
-    print(f"  • Tiempo total visto    : {telemetry['viewing_hours']} horas ({telemetry['sessions']} sesiones)")
-    print(f"  • Reconexiones / Pausas : {telemetry['reconnects']} eventos")
-    print(f"  • Errores de señal      : {telemetry['errors']} eventos")
-    print(f"  • Tasa de incidentes    : {telemetry['incidents_per_hour']} cortes por hora de partido")
+    telemetry = get_viewing_telemetry(provider)
+    if telemetry.get("is_new"):
+        print(f"  • Tiempo total visto    : {telemetry['viewing_hours']} horas (ℹ️  Proveedor recién agregado: en periodo de prueba)")
+        print(f"  • Reconexiones / Pausas : {telemetry['reconnects']} eventos")
+        print(f"  • Errores de señal      : {telemetry['errors']} eventos")
+        print(f"  • Tasa de incidentes    : N/A (Se calibrará tras ver partidos reales)")
+    else:
+        print(f"  • Tiempo total visto    : {telemetry['viewing_hours']} horas ({telemetry['sessions']} sesiones)")
+        print(f"  • Reconexiones / Pausas : {telemetry['reconnects']} eventos")
+        print(f"  • Errores de señal      : {telemetry['errors']} eventos")
+        print(f"  • Tasa de incidentes    : {telemetry['incidents_per_hour']} cortes por hora de partido")
 
     # 2. Benchmark de canales clave
     print("\n⚡ 2. Ejecutando Benchmark en Vivo de Canales Clave...")
