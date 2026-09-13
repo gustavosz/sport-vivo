@@ -114,6 +114,41 @@ group, g_created = ChannelGroup.objects.get_or_create(name="Deportes Argentina")
 print(f"✅ Grupo de Canales: '{group.name}' listo")
 
 # -----------------------------------------------------------------------------
+# 4b. Perfil de Streaming con Failover Rápido (Timeout y Buffering optimizados)
+# -----------------------------------------------------------------------------
+StreamProfile = apps.get_model('core', 'StreamProfile')
+CoreSettings = apps.get_model('core', 'CoreSettings')
+from core.models import PROXY_SETTINGS_KEY, STREAM_SETTINGS_KEY
+
+stream_profile_fast, _ = StreamProfile.objects.get_or_create(
+    name="ffmpeg-fast-failover",
+    defaults={
+        "command": "ffmpeg",
+        "parameters": "-user_agent {userAgent} -rw_timeout 5000000 -i {streamUrl} -c copy -f mpegts pipe:1",
+        "locked": False,
+        "is_active": True,
+        "user_agent_id": 1,
+    }
+)
+stream_profile_fast.command = "ffmpeg"
+stream_profile_fast.parameters = "-user_agent {userAgent} -rw_timeout 5000000 -i {streamUrl} -c copy -f mpegts pipe:1"
+stream_profile_fast.save()
+
+# Reducir buffering_timeout a 4s para conmutación casi instantánea
+p_settings = CoreSettings.get_proxy_settings()
+p_settings['buffering_timeout'] = 4
+p_settings['buffering_speed'] = 1.0
+CoreSettings._update_group(PROXY_SETTINGS_KEY, "Proxy Settings", p_settings)
+CoreSettings.invalidate_group_cache(PROXY_SETTINGS_KEY)
+
+# Establecer como perfil por defecto
+s_settings = CoreSettings.get_stream_settings()
+s_settings['default_stream_profile'] = stream_profile_fast.id
+CoreSettings._update_group(STREAM_SETTINGS_KEY, "Stream Settings", s_settings)
+CoreSettings.invalidate_group_cache(STREAM_SETTINGS_KEY)
+print(f"✅ Perfil de Failover Rápido activo: {stream_profile_fast.name} (buffering_timeout: 4s, rw_timeout: 5s)")
+
+# -----------------------------------------------------------------------------
 # 5. Configuración de Canales Curados y Streams de Failover
 # -----------------------------------------------------------------------------
 channels_config = [
@@ -204,12 +239,14 @@ for cfg in channels_config:
         defaults={
             "name": cfg["name"],
             "channel_group": group,
+            "stream_profile": stream_profile_fast,
             "hidden_from_output": False
         }
     )
     if not ch_created:
         channel.name = cfg["name"]
         channel.channel_group = group
+        channel.stream_profile = stream_profile_fast
         channel.hidden_from_output = False
         channel.save()
 
