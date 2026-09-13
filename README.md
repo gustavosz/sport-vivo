@@ -58,21 +58,21 @@ flowchart TD
 
 ## 📺 Canales Curados y Mapeo de Failover
 
-| Nº | Canal | Señal Principal (P1) | Señal Backup (P2) | EPG (tvg-id) |
+| Nº | Canal | Señal Principal (P1 - Eagle 4K) | Señal Backup (P2 - Trex OTT) | EPG (tvg-id) |
 | :---: | :--- | :--- | :--- | :--- |
-| **01** | **ESPN Premium** | ARG: ESPN PREMIUM RAW | VO: FOX SPORTS PREMIUM ARG HD | `a1ty` |
-| **02** | **TNT Sports** | ARG: TNT SPORTS RAW | VO: TNT SPORTS ARG HD | `a1sm` |
-| **03** | **TyC Sports** | ARG: TYC SPORTS RAW | ARG: TYC SPORTS RAW Alt | `a1sk` |
-| **04** | **Fox Sports 1** | ARG: FOX SPORTS 1 RAW | VO: FOX SPORTS 1 ARG HD | `a1tx` |
-| **05** | **Fox Sports 2** | ARG: FOX SPORTS 2 RAW | — | `a1r3` |
-| **06** | **Fox Sports 3** | ARG: FOX SPORTS 3 RAW | — | `a1sl` |
-| **07** | **ESPN** | ARG: ESPN RAW | VO: PN ARG HD | `a1jl` |
-| **08** | **ESPN 2** | ARG: ESPN 2 RAW | VO: PN 2 ARG HD | `a1jc` |
-| **09** | **ESPN 3** | ARG: ESPN 3 RAW | VO: PN 3 ARG HD | `a1kf` |
-| **10** | **ESPN Extra** | ARG: ESPN EXTRA RAW | VO: PN+ ARG HD | `a1j1` |
-| **11** | **DSports (DirecTV 1)** | CO: DIRECTV SPORTS 1 | RC: DIRECTV SPORTS HD | — |
-| **12** | **DSports 2** | CO: DIRECTV SPORTS 2 | RC: DIRECTV SPORTS 2 | — |
-| **13** | **DSports+ / DTV** | ARG: DTV RAW | — | — |
+| **01** | **ESPN Premium** | \|ARG\| FOX SPORTS PREMIUM ᴴᴰ | ARG: ESPN PREMIUM RAW | `a1ty` |
+| **02** | **TNT Sports** | \|ARG\| TNT SPORT | ARG: TNT SPORTS RAW | `a1sm` |
+| **03** | **TyC Sports** | \|ARG\| TYC SPORTS ᴬᴿᴳᴱᴺᵀᴵᴺᴬ ᴴᴰ | ARG: TYC SPORTS RAW | `a1sk` |
+| **04** | **Fox Sports 1** | \|ARG\| FOX SPORTS 1 ᴴᴰ | ARG: FOX SPORTS 1 RAW | `a1tx` |
+| **05** | **Fox Sports 2** | \|ARG\| FOX SPORTS 2 ᴴᴰ | ARG: FOX SPORTS 2 RAW | `a1r3` |
+| **06** | **Fox Sports 3** | \|ARG\| FOX SPORT 3 | ARG: FOX SPORTS 3 RAW | `a1sl` |
+| **07** | **ESPN** | \|ARG\| ESPN | ARG: ESPN RAW | `a1jl` |
+| **08** | **ESPN 2** | \|ARG\| ESPN 2 | ARG: ESPN 2 RAW | `a1jc` |
+| **09** | **ESPN 3** | \|PER\| ESPN 3 | ARG: ESPN 3 RAW | `a1kf` |
+| **10** | **ESPN Extra** | \|ARG\| ESPN+ | ARG: ESPN EXTRA RAW | `a1j1` |
+| **11** | **DSports (DirecTV 1)** | \|ARG\| DIRECT TV SPORTS | ARG: DTV RAW | — |
+| **12** | **DSports 2** | \|ARG\| DIRECT TV SPORTS 2 | CO: DIRECTV SPORTS 2 | — |
+| **13** | **DSports+ / DTV** | \|ARG\| DIRECT TV SPORTS PLUS | ARG: DTV RAW | — |
 
 ---
 
@@ -113,6 +113,7 @@ CLIENT_PASSWORD="TuPasswordCliente123*"
 
 # --- Proveedor IPTV (Xtream Codes) ---
 PROVIDER_NAME="Trex OTT - Deportes AR"
+PROVIDER_SELLER="Tienda Azza (z2u)"
 PROVIDER_SERVER_URL="http://pro.business-cdn-8k.com"
 PROVIDER_USERNAME="tu_usuario_iptv"
 PROVIDER_PASSWORD="tu_password_iptv"
@@ -153,6 +154,54 @@ El proyecto incluye un `Makefile` para facilitar la administración:
 | `make logs` | Visualiza los logs en tiempo real de Dispatcharr |
 | `make status` | Muestra el estado del contenedor |
 | `make provision` | Vuelve a sincronizar canales, failover y EPG sin reiniciar |
+| `make audit` | Audita la calidad en vivo (TTFB, bitrate, cortes) y calcula score |
+| `make ranking` | Muestra el ranking histórico y el top de proveedores evaluados |
+
+---
+
+## 📊 Auditoría de Calidad y Ranking de Proveedores
+
+Sport-Vivo incluye un sistema de auditoría objetiva para evaluar si vale la pena **renovar o cambiar de proveedor IPTV** a fin de mes:
+
+### 1. ¿Cómo funciona?
+Al ejecutar `make audit`, el sistema analiza:
+- **Telemetría real de uso (últimos 30 días)**: Extrae horas vistas, reconexiones forzadas y errores de señal registrados en la base de datos interna de Dispatcharr.
+- **Benchmark en vivo de canales clave**: Mide en tiempo real el **TTFB** (tiempo de respuesta de arranque de stream), **Bitrate real (Mbps)** sostenido y **Jitter / Pausas** de ESPN Premium, TNT Sports, TyC Sports, Fox Sports y ESPN.
+- **Cálculo de Score (0 a 100)**: Pondera estabilidad de partidos (40%), bitrate sostenido (25%), fluidez sin pausas (20%) y latencia de inicio (15%).
+- **Veredicto objetivo**:
+  - 🟢 **80 - 100**: *RENOVAR (EXCELENTE SERVICIO)*
+  - 🟡 **65 - 79**: *RENOVAR CON RESERVAS (REGULAR)*
+  - 🔴 **< 65**: *NO RENOVAR (ALTA INESTABILIDAD)*
+
+### 2. Identificación del Vendedor / Tienda (ej. z2u, AliExpress)
+Muchos servicios IPTV se contratan a través de revendedores o tiendas en plataformas como **z2u**, AliExpress o foros. Para saber con qué vendedor específico tuviste la mejor o peor experiencia:
+- Define `PROVIDER_SELLER="Tienda Azza (z2u)"` en tu `.env`.
+- O pásalo al vuelo en el comando: `make audit SELLER="Tienda Azza (z2u)"`.
+
+### 3. Comandos
+
+```bash
+# Ejecutar auditoría completa del proveedor actual y registrar en el histórico
+make audit
+
+# O especificando el vendedor/tienda puntualmente:
+make audit SELLER="Tienda Azza (z2u)"
+
+# Consultar el ranking histórico y comparar vendedores y proveedores evaluados
+make ranking
+```
+
+El historial se persiste automáticamente en `./data/provider_quality.json`, permitiendo comparar proveedores y tiendas mes a mes cuando pruebes nuevas suscripciones:
+
+```text
+========================================================================================================
+🏆  RANKING Y TOP DE PROVEEDORES IPTV (SPORT-VIVO)
+========================================================================================================
+Pos  Proveedor                  Vendedor / Tienda        Score    Bitrate     Cortes/h   Veredicto
+--------------------------------------------------------------------------------------------------------
+ #1   Trex OTT - Deportes AR     Tienda Azza (z2u)        45/100   22.53 Mbps  12.82/h    🔴 NO RENOVAR
+========================================================================================================
+```
 
 ---
 

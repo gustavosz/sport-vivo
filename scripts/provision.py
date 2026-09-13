@@ -39,11 +39,18 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Futbol2026*')
 CLIENT_USERNAME = os.environ.get('CLIENT_USERNAME', 'tv_living')
 CLIENT_PASSWORD = os.environ.get('CLIENT_PASSWORD', 'Futbol2026*')
 
-PROVIDER_NAME = os.environ.get('PROVIDER_NAME', 'Trex OTT - Deportes AR')
-PROVIDER_SERVER_URL = os.environ.get('PROVIDER_SERVER_URL', 'http://pro.business-cdn-8k.com')
-PROVIDER_USERNAME = os.environ.get('PROVIDER_USERNAME', '2b8f2ea7f112')
-PROVIDER_PASSWORD = os.environ.get('PROVIDER_PASSWORD', 'daa71567cf')
+# Variables de Proveedores IPTV
+PROVIDER_NAME = os.environ.get('PROVIDER_NAME', 'Eagle 4K - Deportes AR')
+PROVIDER_SERVER_URL = os.environ.get('PROVIDER_SERVER_URL', 'http://178015641313.eg4k-pass.my:80')
+PROVIDER_USERNAME = os.environ.get('PROVIDER_USERNAME', '5mk2559fl3')
+PROVIDER_PASSWORD = os.environ.get('PROVIDER_PASSWORD', 'ljiktoy94a')
 PROVIDER_MAX_STREAMS = int(os.environ.get('PROVIDER_MAX_STREAMS', '1'))
+
+BACKUP_PROVIDER_NAME = os.environ.get('BACKUP_PROVIDER_NAME', 'Trex OTT - Deportes AR')
+BACKUP_PROVIDER_SERVER_URL = os.environ.get('BACKUP_PROVIDER_SERVER_URL', 'http://pro.business-cdn-8k.com')
+BACKUP_PROVIDER_USERNAME = os.environ.get('BACKUP_PROVIDER_USERNAME', '2b8f2ea7f112')
+BACKUP_PROVIDER_PASSWORD = os.environ.get('BACKUP_PROVIDER_PASSWORD', 'daa71567cf')
+BACKUP_PROVIDER_MAX_STREAMS = int(os.environ.get('BACKUP_PROVIDER_MAX_STREAMS', '1'))
 
 EPG_NAME = os.environ.get('EPG_NAME', 'EPG Argentina')
 EPG_URL = os.environ.get('EPG_URL', 'https://jarap.github.io/iptv-epg-argentina/epg.xml.gz')
@@ -68,28 +75,66 @@ action_text = "Creado" if created else "Actualizado"
 print(f"✅ Superusuario admin: {admin_user.username} ({action_text})")
 
 # -----------------------------------------------------------------------------
-# 2. Proveedor IPTV (M3UAccount / Xtream Codes)
+# 2. Proveedores IPTV (Principal: Eagle 4K | Backup: Trex OTT)
 # -----------------------------------------------------------------------------
-provider, p_created = M3UAccount.objects.get_or_create(
+UserAgent = apps.get_model('core', 'UserAgent')
+chrome_ua = UserAgent.objects.filter(name__icontains='Chrome').first()
+
+# 2a. Proveedor Principal
+provider_primary, p1_created = M3UAccount.objects.get_or_create(
     username=PROVIDER_USERNAME,
     defaults={
         'name': PROVIDER_NAME,
         'server_url': PROVIDER_SERVER_URL,
         'password': PROVIDER_PASSWORD,
         'max_streams': PROVIDER_MAX_STREAMS,
-        'account_type': 'xc',
+        'account_type': 'XC',
+        'user_agent': chrome_ua,
+        'custom_properties': {'enable_vod': False, 'auto_enable_new_groups_vod': True, 'auto_enable_new_groups_live': True, 'auto_enable_new_groups_series': True},
         'is_active': True
     }
 )
-if not p_created:
-    provider.name = PROVIDER_NAME
-    provider.server_url = PROVIDER_SERVER_URL
-    provider.password = PROVIDER_PASSWORD
-    provider.max_streams = PROVIDER_MAX_STREAMS
-    provider.is_active = True
-    provider.save()
-p_action = "Registrado" if p_created else "Actualizado"
-print(f"✅ Proveedor IPTV: {provider.name} [{provider.server_url}] (Límite: {provider.max_streams} stream) ({p_action})")
+if not p1_created:
+    provider_primary.name = PROVIDER_NAME
+    provider_primary.server_url = PROVIDER_SERVER_URL
+    provider_primary.password = PROVIDER_PASSWORD
+    provider_primary.max_streams = PROVIDER_MAX_STREAMS
+    provider_primary.account_type = 'XC'
+    if chrome_ua:
+        provider_primary.user_agent = chrome_ua
+    provider_primary.is_active = True
+    provider_primary.save()
+p1_action = "Registrado" if p1_created else "Actualizado"
+print(f"✅ Proveedor Principal : {provider_primary.name} [{provider_primary.server_url}] (Límite: {provider_primary.max_streams} stream) ({p1_action})")
+
+# 2b. Proveedor Backup / Failover
+provider_backup = None
+if BACKUP_PROVIDER_USERNAME and BACKUP_PROVIDER_SERVER_URL:
+    provider_backup, p2_created = M3UAccount.objects.get_or_create(
+        username=BACKUP_PROVIDER_USERNAME,
+        defaults={
+            'name': BACKUP_PROVIDER_NAME,
+            'server_url': BACKUP_PROVIDER_SERVER_URL,
+            'password': BACKUP_PROVIDER_PASSWORD,
+            'max_streams': BACKUP_PROVIDER_MAX_STREAMS,
+            'account_type': 'XC',
+            'user_agent': chrome_ua,
+            'custom_properties': {'enable_vod': False, 'auto_enable_new_groups_vod': True, 'auto_enable_new_groups_live': True, 'auto_enable_new_groups_series': True},
+            'is_active': True
+        }
+    )
+    if not p2_created:
+        provider_backup.name = BACKUP_PROVIDER_NAME
+        provider_backup.server_url = BACKUP_PROVIDER_SERVER_URL
+        provider_backup.password = BACKUP_PROVIDER_PASSWORD
+        provider_backup.max_streams = BACKUP_PROVIDER_MAX_STREAMS
+        provider_backup.account_type = 'XC'
+        if chrome_ua:
+            provider_backup.user_agent = chrome_ua
+        provider_backup.is_active = True
+        provider_backup.save()
+    p2_action = "Registrado" if p2_created else "Actualizado"
+    print(f"✅ Proveedor Failover  : {provider_backup.name} [{provider_backup.server_url}] (Límite: {provider_backup.max_streams} stream) ({p2_action})")
 
 # -----------------------------------------------------------------------------
 # 3. Usuario Cliente IPTV (TiviMate, Smart TV, Jellyfin)
@@ -156,84 +201,110 @@ channels_config = [
     {
         "number": 1,
         "name": "ESPN Premium",
-        "stream_ids": [49894],
-        "name_hints": ["ESPN PREMIUM RAW"]
+        "primary_stream_ids": [84034, 87555],  # Eagle 4K: |ARG| FOX SPORTS PREMIUM ᴴᴰ, |LAM| Fox Sports Premium
+        "backup_stream_ids": [49894],          # Trex OTT: ARG: ESPN PREMIUM RAW
+        "primary_hints": ["FOX SPORTS PREMIUM", "ESPN PREMIUM"],
+        "backup_hints": ["ESPN PREMIUM RAW"],
     },
     {
         "number": 2,
         "name": "TNT Sports",
-        "stream_ids": [50006],
-        "name_hints": ["TNT SPORTS RAW"]
+        "primary_stream_ids": [84035, 87615],  # Eagle 4K: |ARG| TNT SPORT, |LAM| TNT Sports ᵁᴴᴰ
+        "backup_stream_ids": [50006],          # Trex OTT: ARG: TNT SPORTS RAW
+        "primary_hints": ["TNT SPORT"],
+        "backup_hints": ["TNT SPORTS RAW"],
     },
     {
         "number": 3,
         "name": "TyC Sports",
-        "stream_ids": [50009, 50021],
-        "name_hints": ["TYC SPORTS RAW"]
+        "primary_stream_ids": [84021, 84023],  # Eagle 4K: |ARG| TYC SPORTS ᴬᴿᴳᴱᴺᵀᴵᴺᴬ ᴴᴰ, |ARG| TYC SPORTS
+        "backup_stream_ids": [50009, 50021],  # Trex OTT: ARG: TYC SPORTS RAW
+        "primary_hints": ["TYC SPORTS"],
+        "backup_hints": ["TYC SPORTS RAW"],
     },
     {
         "number": 4,
         "name": "Fox Sports 1",
-        "stream_ids": [49908],
-        "name_hints": ["FOX SPORTS 1 RAW"]
+        "primary_stream_ids": [84031, 84032],  # Eagle 4K: |ARG| FOX SPORTS 1 ᴴᴰ, opc2
+        "backup_stream_ids": [49908],          # Trex OTT: ARG: FOX SPORTS 1 RAW
+        "primary_hints": ["FOX SPORTS 1 ᴴᴰ", "FOX SPORT 1"],
+        "backup_hints": ["FOX SPORTS 1 RAW"],
     },
     {
         "number": 5,
         "name": "Fox Sports 2",
-        "stream_ids": [49909],
-        "name_hints": ["FOX SPORTS 2 RAW"]
+        "primary_stream_ids": [84033, 84029],  # Eagle 4K: |ARG| FOX SPORTS 2 ᴴᴰ, |ARG| FOX SPORT 2
+        "backup_stream_ids": [49909],          # Trex OTT: ARG: FOX SPORTS 2 RAW
+        "primary_hints": ["FOX SPORTS 2 ᴴᴰ", "FOX SPORT 2"],
+        "backup_hints": ["FOX SPORTS 2 RAW"],
     },
     {
         "number": 6,
         "name": "Fox Sports 3",
-        "stream_ids": [49910],
-        "name_hints": ["FOX SPORTS 3 RAW"]
+        "primary_stream_ids": [84030, 87545],  # Eagle 4K: |ARG| FOX SPORT 3, |LAM| Fox Sports 3 ᵁᴴᴰ
+        "backup_stream_ids": [49910],          # Trex OTT: ARG: FOX SPORTS 3 RAW
+        "primary_hints": ["FOX SPORT 3", "FOX SPORTS 3"],
+        "backup_hints": ["FOX SPORTS 3 RAW"],
     },
     {
         "number": 7,
         "name": "ESPN",
-        "stream_ids": [49896],
-        "name_hints": ["ESPN RAW"]
+        "primary_stream_ids": [84024, 84020],  # Eagle 4K: |ARG| ESPN, |ARGENT ᴴᴰ - ESPN ARG ᴴᴰ-
+        "backup_stream_ids": [49896],          # Trex OTT: ARG: ESPN RAW
+        "primary_hints": ["|ARG| ESPN", "ESPN ARG"],
+        "backup_hints": ["ESPN RAW"],
     },
     {
         "number": 8,
         "name": "ESPN 2",
-        "stream_ids": [49886],
-        "name_hints": ["ESPN 2 RAW"]
+        "primary_stream_ids": [84025, 87565],  # Eagle 4K: |ARG| ESPN 2, |LAM| ESPN 2 ᵁᴴᴰ
+        "backup_stream_ids": [49886],          # Trex OTT: ARG: ESPN 2 RAW
+        "primary_hints": ["|ARG| ESPN 2", "ESPN 2"],
+        "backup_hints": ["ESPN 2 RAW"],
     },
     {
         "number": 9,
         "name": "ESPN 3",
-        "stream_ids": [49890],
-        "name_hints": ["ESPN 3 RAW"]
+        "primary_stream_ids": [83883, 87600],  # Eagle 4K: |PER| ESPN 3, |LAM| ESPN 3 ᵁᴴᴰ
+        "backup_stream_ids": [49890],          # Trex OTT: ARG: ESPN 3 RAW
+        "primary_hints": ["ESPN 3"],
+        "backup_hints": ["ESPN 3 RAW"],
     },
     {
         "number": 10,
         "name": "ESPN Extra",
-        "stream_ids": [49893],
-        "name_hints": ["ESPN EXTRA RAW"]
+        "primary_stream_ids": [84026, 83886],  # Eagle 4K: |ARG| ESPN+, |PER| ESPN EXTRA
+        "backup_stream_ids": [49893],          # Trex OTT: ARG: ESPN EXTRA RAW
+        "primary_hints": ["|ARG| ESPN+", "ESPN EXTRA"],
+        "backup_hints": ["ESPN EXTRA RAW"],
     },
     {
         "number": 11,
         "name": "DSports (DirecTV 1)",
-        "stream_ids": [49871],
-        "name_hints": ["DTV RAW", "DIRECTV SPORTS 1"]
+        "primary_stream_ids": [84039, 83968],  # Eagle 4K: |ARG| DIRECT TV SPORTS, |UY| DIRECTV SPORTS ᴴᴰ
+        "backup_stream_ids": [49871],          # Trex OTT: ARG: DTV RAW
+        "primary_hints": ["DIRECT TV SPORTS", "DIRECTV SPORTS 1"],
+        "backup_hints": ["DTV RAW", "DIRECTV SPORTS 1"],
     },
     {
         "number": 12,
         "name": "DSports 2",
-        "stream_ids": [50405, 50368],
-        "name_hints": ["DIRECTV SPORTS 2"]
+        "primary_stream_ids": [84040, 86554],  # Eagle 4K: |ARG| DIRECT TV SPORTS 2, |CO| DIRECTV SPORTS 2
+        "backup_stream_ids": [50405, 50368],  # Trex OTT: CO: DIRECTV SPORTS 2
+        "primary_hints": ["DIRECT TV SPORTS 2", "DIRECTV SPORTS 2"],
+        "backup_hints": ["DIRECTV SPORTS 2"],
     },
     {
         "number": 13,
         "name": "DSports+ / DTV",
-        "stream_ids": [49871],
-        "name_hints": ["DTV RAW"]
+        "primary_stream_ids": [84041],         # Eagle 4K: |ARG| DIRECT TV SPORTS PLUS
+        "backup_stream_ids": [49871],          # Trex OTT: ARG: DTV RAW
+        "primary_hints": ["DIRECT TV SPORTS PLUS"],
+        "backup_hints": ["DTV RAW"],
     },
 ]
 
-print("\n--- Sincronizando Canales y Streams Auténticos ---")
+print("\n--- Sincronizando Canales y Mapeo de Failover (P1: Eagle 4K, P2: Trex OTT) ---")
 for cfg in channels_config:
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=cfg["number"],
@@ -251,19 +322,44 @@ for cfg in channels_config:
         channel.hidden_from_output = False
         channel.save()
 
-    # Resolver streams candidatos (primero por ID exacto, luego por nombre)
-    resolved_streams = []
-    for s_id in cfg["stream_ids"]:
+    # Resolver streams candidatos del proveedor principal (Eagle 4K)
+    resolved_primary = []
+    for s_id in cfg.get("primary_stream_ids", []):
         s = Stream.objects.filter(id=s_id).first()
-        if s and s not in resolved_streams:
-            resolved_streams.append(s)
-
-    if not resolved_streams:
-        for hint in cfg["name_hints"]:
-            matches = Stream.objects.filter(name__icontains=hint)
+        if s and s not in resolved_primary:
+            resolved_primary.append(s)
+    if not resolved_primary:
+        for hint in cfg.get("primary_hints", []):
+            matches = Stream.objects.filter(m3u_account=provider_primary, name__icontains=hint)
             for m in matches:
-                if m not in resolved_streams:
-                    resolved_streams.append(m)
+                if m not in resolved_primary:
+                    resolved_primary.append(m)
+
+    # Resolver streams candidatos del proveedor de respaldo (Trex OTT)
+    resolved_backup = []
+    for s_id in cfg.get("backup_stream_ids", []):
+        s = Stream.objects.filter(id=s_id).first()
+        if s and s not in resolved_backup:
+            resolved_backup.append(s)
+    if not resolved_backup and provider_backup:
+        for hint in cfg.get("backup_hints", []):
+            matches = Stream.objects.filter(m3u_account=provider_backup, name__icontains=hint)
+            for m in matches:
+                if m not in resolved_backup:
+                    resolved_backup.append(m)
+
+    # Ordenar estrictamente:
+    # 1. Señal Principal (Eagle 4K)
+    # 2. Señal Backup (Trex OTT)
+    # 3+. Señales Alternativas
+    resolved_streams = []
+    if resolved_primary:
+        resolved_streams.append(resolved_primary[0])
+    if resolved_backup:
+        resolved_streams.append(resolved_backup[0])
+    for s in resolved_primary[1:] + resolved_backup[1:]:
+        if s not in resolved_streams:
+            resolved_streams.append(s)
 
     if resolved_streams:
         ChannelStream.objects.filter(channel=channel).delete()
@@ -273,10 +369,10 @@ for cfg in channels_config:
                 stream=stream,
                 order=idx
             )
-        streams_summary = ", ".join([f"P{idx}:{s.name[:25]}" for idx, s in enumerate(resolved_streams, start=1)])
-        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} -> {len(resolved_streams)} streams ({streams_summary})")
+        streams_summary = " -> ".join([f"P{idx}:[{stream.m3u_account.name[:8] if stream.m3u_account else '?'}] {stream.name[:18]}" for idx, stream in enumerate(resolved_streams, start=1)])
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : {streams_summary}")
     else:
-        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} -> Sin streams disponibles aún (requiere importación de M3U)")
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : Sin streams disponibles")
 
 # -----------------------------------------------------------------------------
 # 5b. Logotipos Oficiales Transparentes en Alta Definición (Sin fondos blancos)
