@@ -30,6 +30,7 @@ Channel = apps.get_model('dispatcharr_channels', 'Channel')
 ChannelGroup = apps.get_model('dispatcharr_channels', 'ChannelGroup')
 ChannelStream = apps.get_model('dispatcharr_channels', 'ChannelStream')
 Stream = apps.get_model('dispatcharr_channels', 'Stream')
+Logo = apps.get_model('dispatcharr_channels', 'Logo')
 
 # Variables desde el entorno (con defaults)
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -124,19 +125,19 @@ stream_profile_fast, _ = StreamProfile.objects.get_or_create(
     name="ffmpeg-fast-failover",
     defaults={
         "command": "ffmpeg",
-        "parameters": "-user_agent {userAgent} -rw_timeout 5000000 -i {streamUrl} -c copy -f mpegts pipe:1",
+        "parameters": "-user_agent {userAgent} -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1",
         "locked": False,
         "is_active": True,
         "user_agent_id": 1,
     }
 )
 stream_profile_fast.command = "ffmpeg"
-stream_profile_fast.parameters = "-user_agent {userAgent} -rw_timeout 5000000 -i {streamUrl} -c copy -f mpegts pipe:1"
+stream_profile_fast.parameters = "-user_agent {userAgent} -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1"
 stream_profile_fast.save()
 
-# Reducir buffering_timeout a 4s para conmutación casi instantánea
+# Establecer buffering_timeout a 15s (valor óptimo para absorber jitter y reconexiones)
 p_settings = CoreSettings.get_proxy_settings()
-p_settings['buffering_timeout'] = 4
+p_settings['buffering_timeout'] = 15
 p_settings['buffering_speed'] = 1.0
 CoreSettings._update_group(PROXY_SETTINGS_KEY, "Proxy Settings", p_settings)
 CoreSettings.invalidate_group_cache(PROXY_SETTINGS_KEY)
@@ -146,7 +147,7 @@ s_settings = CoreSettings.get_stream_settings()
 s_settings['default_stream_profile'] = stream_profile_fast.id
 CoreSettings._update_group(STREAM_SETTINGS_KEY, "Stream Settings", s_settings)
 CoreSettings.invalidate_group_cache(STREAM_SETTINGS_KEY)
-print(f"✅ Perfil de Failover Rápido activo: {stream_profile_fast.name} (buffering_timeout: 4s, rw_timeout: 5s)")
+print(f"✅ Perfil de Streaming Estable activo: {stream_profile_fast.name} (buffering_timeout: 15s, rw_timeout: 15s)")
 
 # -----------------------------------------------------------------------------
 # 5. Configuración de Canales Curados y Streams de Failover
@@ -155,14 +156,14 @@ channels_config = [
     {
         "number": 1,
         "name": "ESPN Premium",
-        "stream_ids": [49894, 13051],
-        "name_hints": ["ESPN PREMIUM RAW", "FOX SPORTS PREMIUM ARG HD"]
+        "stream_ids": [49894],
+        "name_hints": ["ESPN PREMIUM RAW"]
     },
     {
         "number": 2,
         "name": "TNT Sports",
-        "stream_ids": [50006, 13076],
-        "name_hints": ["TNT SPORTS RAW", "TNT SPORTS ARG HD"]
+        "stream_ids": [50006],
+        "name_hints": ["TNT SPORTS RAW"]
     },
     {
         "number": 3,
@@ -173,8 +174,8 @@ channels_config = [
     {
         "number": 4,
         "name": "Fox Sports 1",
-        "stream_ids": [49908, 13074],
-        "name_hints": ["FOX SPORTS 1 RAW", "FOX SPORTS 1 ARG HD"]
+        "stream_ids": [49908],
+        "name_hints": ["FOX SPORTS 1 RAW"]
     },
     {
         "number": 5,
@@ -191,32 +192,32 @@ channels_config = [
     {
         "number": 7,
         "name": "ESPN",
-        "stream_ids": [49896, 13069],
-        "name_hints": ["ESPN RAW", "PN ARG HD"]
+        "stream_ids": [49896],
+        "name_hints": ["ESPN RAW"]
     },
     {
         "number": 8,
         "name": "ESPN 2",
-        "stream_ids": [49886, 13071],
-        "name_hints": ["ESPN 2 RAW", "PN 2 ARG HD"]
+        "stream_ids": [49886],
+        "name_hints": ["ESPN 2 RAW"]
     },
     {
         "number": 9,
         "name": "ESPN 3",
-        "stream_ids": [49890, 13072],
-        "name_hints": ["ESPN 3 RAW", "PN 3 ARG HD"]
+        "stream_ids": [49890],
+        "name_hints": ["ESPN 3 RAW"]
     },
     {
         "number": 10,
         "name": "ESPN Extra",
-        "stream_ids": [49893, 13067],
-        "name_hints": ["ESPN EXTRA RAW", "PN+ ARG HD"]
+        "stream_ids": [49893],
+        "name_hints": ["ESPN EXTRA RAW"]
     },
     {
         "number": 11,
         "name": "DSports (DirecTV 1)",
-        "stream_ids": [50404, 50435],
-        "name_hints": ["DIRECTV SPORTS 1", "DIRECTV SPORTS HD"]
+        "stream_ids": [49871],
+        "name_hints": ["DTV RAW", "DIRECTV SPORTS 1"]
     },
     {
         "number": 12,
@@ -232,7 +233,7 @@ channels_config = [
     },
 ]
 
-print("\n--- Sincronizando Canales y Failover Streams ---")
+print("\n--- Sincronizando Canales y Streams Auténticos ---")
 for cfg in channels_config:
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=cfg["number"],
@@ -276,6 +277,40 @@ for cfg in channels_config:
         print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} -> {len(resolved_streams)} streams ({streams_summary})")
     else:
         print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} -> Sin streams disponibles aún (requiere importación de M3U)")
+
+# -----------------------------------------------------------------------------
+# 5b. Logotipos Oficiales Transparentes en Alta Definición (Sin fondos blancos)
+# -----------------------------------------------------------------------------
+print("\n--- Sincronizando Logotipos Transparentes HD ---")
+channel_logos = {
+    1: ("ESPN Premium", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-premium-ar.png"),
+    2: ("TNT Sports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/tnt-sports-ar.png"),
+    3: ("TyC Sports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/tyc-sports-ar.png"),
+    4: ("Fox Sports 1", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/fox-sports-ar.png"),
+    5: ("Fox Sports 2", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/fox-sports-2-ar.png"),
+    6: ("Fox Sports 3", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/fox-sports-3-ar.png"),
+    7: ("ESPN", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-ar.png"),
+    8: ("ESPN 2", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-2-ar.png"),
+    9: ("ESPN 3", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-3-ar.png"),
+    10: ("ESPN Extra", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-extra-ar.png"),
+    11: ("DSports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports-lam.png"),
+    12: ("DSports 2", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports2-lam.png"),
+    13: ("DSports+", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports-plus-lam.png"),
+}
+
+for ch_num, (logo_title, logo_url) in channel_logos.items():
+    channel = Channel.objects.filter(channel_number=ch_num).first()
+    if channel:
+        logo_obj, _ = Logo.objects.get_or_create(
+            url=logo_url,
+            defaults={"name": f"{logo_title} (HD Transparent)"}
+        )
+        if logo_obj.name != f"{logo_title} (HD Transparent)":
+            logo_obj.name = f"{logo_title} (HD Transparent)"
+            logo_obj.save()
+        channel.logo = logo_obj
+        channel.save()
+        print(f"  [Ch {int(ch_num):02d}] Logo asignado: {logo_obj.name}")
 
 # -----------------------------------------------------------------------------
 # 6. Fuente EPG Externa y Vinculación
@@ -324,12 +359,15 @@ for ch_num, epg_id in epg_mapping.items():
         print(f"  [Aviso] No se pudo mapear EPG para canal {ch_num}: {e}")
 
 try:
-    from apps.epg.tasks import dispatch_program_refresh_for_epg_ids
-    if epg_ids_to_refresh:
-        dispatched = dispatch_program_refresh_for_epg_ids(epg_ids_to_refresh)
-        print(f"✅ Parseo de guía y logos encolado para {len(epg_ids_to_refresh)} canales.")
+    from apps.epg.tasks import fetch_xmltv, parse_programs_for_source
+    ProgramData = apps.get_model('epg', 'ProgramData')
+    print("\n  Descargando y parseando programas de la guía...")
+    if fetch_xmltv(epg_source):
+        parse_programs_for_source(epg_source)
+        prog_count = ProgramData.objects.count()
+        print(f"✅ Guía actualizada: {prog_count} programas sincronizados para canales activos.")
 except Exception as e:
-    pass
+    print(f"  [Aviso] Error sincronizando programas EPG: {e}")
 
 print("\n" + "=" * 60)
 print("🎉 ¡Aprovisionamiento completado con éxito!")
