@@ -31,6 +31,7 @@ ChannelGroup = apps.get_model('dispatcharr_channels', 'ChannelGroup')
 ChannelStream = apps.get_model('dispatcharr_channels', 'ChannelStream')
 Stream = apps.get_model('dispatcharr_channels', 'Stream')
 Logo = apps.get_model('dispatcharr_channels', 'Logo')
+from dispatcharr.redis_client import RedisClient
 
 # Variables desde el entorno (con defaults)
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -58,6 +59,20 @@ EPG_URL = os.environ.get('EPG_URL', 'https://jarap.github.io/iptv-epg-argentina/
 print("=" * 60)
 print("🚀 SPORT-VIVO: Aprovisionamiento y Sincronización")
 print("=" * 60)
+
+# Limpieza segura de contadores de conexión huérfanos en Redis (solo si no hay streams activos)
+try:
+    _r = RedisClient.get_client()
+    if _r:
+        _active = _r.keys("live:channel:*:clients:*")
+        if not _active:
+            for _k in _r.keys("profile_connections:*"):
+                _r.set(_k, 0)
+            print("🧹 Contadores de conexión Redis inicializados en 0 (sin streams activos).")
+        else:
+            print("ℹ️ Stream activo detectado en Redis. Omitiendo reseteo de contadores de conexión.")
+except Exception as _e:
+    pass
 
 # -----------------------------------------------------------------------------
 # 1. Superusuario Administrador
@@ -91,6 +106,7 @@ provider_primary, p1_created = M3UAccount.objects.get_or_create(
         'account_type': 'XC',
         'user_agent': chrome_ua,
         'custom_properties': {'enable_vod': False, 'auto_enable_new_groups_vod': True, 'auto_enable_new_groups_live': True, 'auto_enable_new_groups_series': True},
+        'refresh_interval': 24,
         'is_active': True
     }
 )
@@ -100,12 +116,13 @@ if not p1_created:
     provider_primary.password = PROVIDER_PASSWORD
     provider_primary.max_streams = PROVIDER_MAX_STREAMS
     provider_primary.account_type = 'XC'
+    provider_primary.refresh_interval = 24
     if chrome_ua:
         provider_primary.user_agent = chrome_ua
     provider_primary.is_active = True
     provider_primary.save()
 p1_action = "Registrado" if p1_created else "Actualizado"
-print(f"✅ Proveedor Principal : {provider_primary.name} [{provider_primary.server_url}] (Límite: {provider_primary.max_streams} stream) ({p1_action})")
+print(f"✅ Proveedor Principal : {provider_primary.name} [{provider_primary.server_url}] (Límite: {provider_primary.max_streams} stream, Auto-refresh: 24h) ({p1_action})")
 
 # 2b. Proveedor Backup / Failover
 provider_backup = None
@@ -120,6 +137,7 @@ if BACKUP_PROVIDER_USERNAME and BACKUP_PROVIDER_SERVER_URL:
             'account_type': 'XC',
             'user_agent': chrome_ua,
             'custom_properties': {'enable_vod': False, 'auto_enable_new_groups_vod': True, 'auto_enable_new_groups_live': True, 'auto_enable_new_groups_series': True},
+            'refresh_interval': 24,
             'is_active': True
         }
     )
@@ -129,12 +147,13 @@ if BACKUP_PROVIDER_USERNAME and BACKUP_PROVIDER_SERVER_URL:
         provider_backup.password = BACKUP_PROVIDER_PASSWORD
         provider_backup.max_streams = BACKUP_PROVIDER_MAX_STREAMS
         provider_backup.account_type = 'XC'
+        provider_backup.refresh_interval = 24
         if chrome_ua:
             provider_backup.user_agent = chrome_ua
         provider_backup.is_active = True
         provider_backup.save()
     p2_action = "Registrado" if p2_created else "Actualizado"
-    print(f"✅ Proveedor Failover  : {provider_backup.name} [{provider_backup.server_url}] (Límite: {provider_backup.max_streams} stream) ({p2_action})")
+    print(f"✅ Proveedor Failover  : {provider_backup.name} [{provider_backup.server_url}] (Límite: {provider_backup.max_streams} stream, Auto-refresh: 24h) ({p2_action})")
 
 # -----------------------------------------------------------------------------
 # 3. Usuario Cliente IPTV (TiviMate, Smart TV, Jellyfin)
@@ -195,116 +214,116 @@ CoreSettings.invalidate_group_cache(STREAM_SETTINGS_KEY)
 print(f"✅ Perfil de Streaming Estable activo: {stream_profile_fast.name} (buffering_timeout: 15s, rw_timeout: 15s)")
 
 # -----------------------------------------------------------------------------
-# 5. Configuración de Canales Curados y Streams de Failover
+# 5. Configuración de Canales Curados (Sin Failover - 1 Señal Argentina Única)
 # -----------------------------------------------------------------------------
 channels_config = [
     {
         "number": 1,
         "name": "ESPN Premium",
-        "primary_stream_ids": [84034, 87555],  # Eagle 4K: |ARG| FOX SPORTS PREMIUM ᴴᴰ, |LAM| Fox Sports Premium
-        "backup_stream_ids": [49894],          # Trex OTT: ARG: ESPN PREMIUM RAW
-        "primary_hints": ["FOX SPORTS PREMIUM", "ESPN PREMIUM"],
-        "backup_hints": ["ESPN PREMIUM RAW"],
+        "stream_id": 84034,  # Eagle 4K: |ARG| FOX SPORTS PREMIUM ᴴᴰ (Pack Fútbol)
+        "hint": "FOX SPORTS PREMIUM",
+        "epg_tvg_id": "espn.premium.argentina.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 2,
         "name": "TNT Sports",
-        "primary_stream_ids": [84035, 87615],  # Eagle 4K: |ARG| TNT SPORT, |LAM| TNT Sports ᵁᴴᴰ
-        "backup_stream_ids": [50006],          # Trex OTT: ARG: TNT SPORTS RAW
-        "primary_hints": ["TNT SPORT"],
-        "backup_hints": ["TNT SPORTS RAW"],
+        "stream_id": 84035,  # Eagle 4K: |ARG| TNT SPORT
+        "hint": "TNT SPORT",
+        "epg_tvg_id": "tntsports.ar",
+        "epg_source_type": "trex",
     },
     {
         "number": 3,
         "name": "TyC Sports",
-        "primary_stream_ids": [84023, 84267, 84021],  # Eagle 4K: |ARG| TYC SPORTS, CHL TyC Sports HD
-        "backup_stream_ids": [50009, 50021],          # Trex OTT: ARG: TYC SPORTS RAW
-        "primary_hints": ["TYC SPORTS"],
-        "backup_hints": ["TYC SPORTS RAW"],
+        "stream_id": 84023,  # Eagle 4K: |ARG| TYC SPORTS
+        "hint": "TYC SPORTS",
+        "epg_tvg_id": "tyc.sports.argentina.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 4,
         "name": "Fox Sports 1",
-        "primary_stream_ids": [84031, 84032],  # Eagle 4K: |ARG| FOX SPORTS 1 ᴴᴰ, opc2
-        "backup_stream_ids": [49908],          # Trex OTT: ARG: FOX SPORTS 1 RAW
-        "primary_hints": ["FOX SPORTS 1 ᴴᴰ", "FOX SPORT 1"],
-        "backup_hints": ["FOX SPORTS 1 RAW"],
+        "stream_id": 84031,  # Eagle 4K: |ARG| FOX SPORTS 1 ᴴᴰ (Transmite Fórmula 1 en directo en Argentina)
+        "hint": "FOX SPORTS 1 ᴴᴰ",
+        "epg_tvg_id": "foxsports.ar",
+        "epg_source_type": "trex",
     },
     {
         "number": 5,
         "name": "Fox Sports 2",
-        "primary_stream_ids": [84033, 84029],  # Eagle 4K: |ARG| FOX SPORTS 2 ᴴᴰ, |ARG| FOX SPORT 2
-        "backup_stream_ids": [49909],          # Trex OTT: ARG: FOX SPORTS 2 RAW
-        "primary_hints": ["FOX SPORTS 2 ᴴᴰ", "FOX SPORT 2"],
-        "backup_hints": ["FOX SPORTS 2 RAW"],
+        "stream_id": 84033,  # Eagle 4K: |ARG| FOX SPORTS 2 ᴴᴰ
+        "hint": "FOX SPORTS 2 ᴴᴰ",
+        "epg_tvg_id": "foxsports2.ar",
+        "epg_source_type": "trex",
     },
     {
         "number": 6,
         "name": "Fox Sports 3",
-        "primary_stream_ids": [84030, 87545],  # Eagle 4K: |ARG| FOX SPORT 3, |LAM| Fox Sports 3 ᵁᴴᴰ
-        "backup_stream_ids": [49910],          # Trex OTT: ARG: FOX SPORTS 3 RAW
-        "primary_hints": ["FOX SPORT 3", "FOX SPORTS 3"],
-        "backup_hints": ["FOX SPORTS 3 RAW"],
+        "stream_id": 84030,  # Eagle 4K: |ARG| FOX SPORT 3
+        "hint": "FOX SPORT 3",
+        "epg_tvg_id": "foxsports3.ar",
+        "epg_source_type": "trex",
     },
     {
         "number": 7,
         "name": "ESPN",
-        "primary_stream_ids": [84024, 84020],  # Eagle 4K: |ARG| ESPN, |ARGENT ᴴᴰ - ESPN ARG ᴴᴰ-
-        "backup_stream_ids": [49896],          # Trex OTT: ARG: ESPN RAW
-        "primary_hints": ["|ARG| ESPN", "ESPN ARG"],
-        "backup_hints": ["ESPN RAW"],
+        "stream_id": 84024,  # Eagle 4K: |ARG| ESPN
+        "hint": "|ARG| ESPN",
+        "epg_tvg_id": "espn.sur.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 8,
         "name": "ESPN 2",
-        "primary_stream_ids": [84025, 87565],  # Eagle 4K: |ARG| ESPN 2, |LAM| ESPN 2 ᵁᴴᴰ
-        "backup_stream_ids": [49886],          # Trex OTT: ARG: ESPN 2 RAW
-        "primary_hints": ["|ARG| ESPN 2", "ESPN 2"],
-        "backup_hints": ["ESPN 2 RAW"],
+        "stream_id": 87565,  # Eagle 4K: |LAM| ESPN 2 ᵁᴴᴰ (720p 60fps fluido sin artefactos)
+        "hint": "ESPN 2",
+        "epg_tvg_id": "espn.2.sur.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 9,
         "name": "ESPN 3",
-        "primary_stream_ids": [83883, 87600],  # Eagle 4K: |PER| ESPN 3, |LAM| ESPN 3 ᵁᴴᴰ
-        "backup_stream_ids": [49890],          # Trex OTT: ARG: ESPN 3 RAW
-        "primary_hints": ["ESPN 3"],
-        "backup_hints": ["ESPN 3 RAW"],
+        "stream_id": 87600,  # Eagle 4K: |LAM| ESPN 3 ᵁᴴᴰ (720p 30fps)
+        "hint": "ESPN 3",
+        "epg_tvg_id": "espn.3.sur.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 10,
         "name": "ESPN Extra",
-        "primary_stream_ids": [84026, 83886],  # Eagle 4K: |ARG| ESPN+, |PER| ESPN EXTRA
-        "backup_stream_ids": [49893],          # Trex OTT: ARG: ESPN EXTRA RAW
-        "primary_hints": ["|ARG| ESPN+", "ESPN EXTRA"],
-        "backup_hints": ["ESPN EXTRA RAW"],
+        "stream_id": 84026,  # Eagle 4K: |ARG| ESPN+
+        "hint": "ESPN+",
+        "epg_tvg_id": "espn.4.sur.latam",
+        "epg_source_type": "latam",
     },
     {
         "number": 11,
         "name": "DSports (DirecTV 1)",
-        "primary_stream_ids": [84039, 83968],  # Eagle 4K: |ARG| DIRECT TV SPORTS, |UY| DIRECTV SPORTS ᴴᴰ
-        "backup_stream_ids": [49871],          # Trex OTT: ARG: DTV RAW
-        "primary_hints": ["DIRECT TV SPORTS", "DIRECTV SPORTS 1"],
-        "backup_hints": ["DTV RAW", "DIRECTV SPORTS 1"],
+        "stream_id": 84039,  # Eagle 4K: |ARG| DIRECT TV SPORTS
+        "hint": "DIRECT TV SPORTS",
+        "epg_tvg_id": "DSPORTS | AR",
+        "epg_source_type": "latam",
     },
     {
         "number": 12,
         "name": "DSports 2",
-        "primary_stream_ids": [84040, 86554],  # Eagle 4K: |ARG| DIRECT TV SPORTS 2, |CO| DIRECTV SPORTS 2
-        "backup_stream_ids": [50405, 50368],  # Trex OTT: CO: DIRECTV SPORTS 2
-        "primary_hints": ["DIRECT TV SPORTS 2", "DIRECTV SPORTS 2"],
-        "backup_hints": ["DIRECTV SPORTS 2"],
+        "stream_id": 84040,  # Eagle 4K: |ARG| DIRECT TV SPORTS 2
+        "hint": "DIRECT TV SPORTS 2",
+        "epg_tvg_id": "DSPORTS 2 | ARGENTINA",
+        "epg_source_type": "latam",
     },
     {
         "number": 13,
         "name": "DSports+ / DTV",
-        "primary_stream_ids": [84041],         # Eagle 4K: |ARG| DIRECT TV SPORTS PLUS
-        "backup_stream_ids": [49871],          # Trex OTT: ARG: DTV RAW
-        "primary_hints": ["DIRECT TV SPORTS PLUS"],
-        "backup_hints": ["DTV RAW"],
+        "stream_id": 84041,  # Eagle 4K: |ARG| DIRECT TV SPORTS PLUS
+        "hint": "DIRECT TV SPORTS PLUS",
+        "epg_tvg_id": "dsports.plus.latam",
+        "epg_source_type": "latam",
     },
 ]
 
-print("\n--- Sincronizando Canales y Mapeo de Failover (P1: Eagle 4K, P2: Trex OTT) ---")
+print("\n--- Sincronizando Canales (1 Canal = 1 Stream Argentino Único, SIN Failover) ---")
 for cfg in channels_config:
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=cfg["number"],
@@ -322,60 +341,28 @@ for cfg in channels_config:
         channel.hidden_from_output = False
         channel.save()
 
-    # Resolver streams candidatos del proveedor principal (Eagle 4K)
-    resolved_primary = []
-    for s_id in cfg.get("primary_stream_ids", []):
-        s = Stream.objects.filter(id=s_id).first()
-        if s and s not in resolved_primary:
-            resolved_primary.append(s)
-    if not resolved_primary:
-        for hint in cfg.get("primary_hints", []):
-            matches = Stream.objects.filter(m3u_account=provider_primary, name__icontains=hint)
-            for m in matches:
-                if m not in resolved_primary:
-                    resolved_primary.append(m)
+    # Resolver stream único por ID o por Hint
+    resolved_stream = None
+    if cfg.get("stream_id"):
+        resolved_stream = Stream.objects.filter(id=cfg["stream_id"]).first()
+    if not resolved_stream and cfg.get("hint"):
+        resolved_stream = Stream.objects.filter(name__icontains=cfg["hint"]).first()
 
-    # Resolver streams candidatos del proveedor de respaldo (Trex OTT)
-    resolved_backup = []
-    for s_id in cfg.get("backup_stream_ids", []):
-        s = Stream.objects.filter(id=s_id).first()
-        if s and s not in resolved_backup:
-            resolved_backup.append(s)
-    if not resolved_backup and provider_backup:
-        for hint in cfg.get("backup_hints", []):
-            matches = Stream.objects.filter(m3u_account=provider_backup, name__icontains=hint)
-            for m in matches:
-                if m not in resolved_backup:
-                    resolved_backup.append(m)
-
-    # Ordenar estrictamente:
-    # 1. Señal Principal (Eagle 4K)
-    # 2. Señal Backup (Trex OTT)
-    # 3+. Señales Alternativas
-    resolved_streams = []
-    if resolved_primary:
-        resolved_streams.append(resolved_primary[0])
-    if resolved_backup:
-        resolved_streams.append(resolved_backup[0])
-    for s in resolved_primary[1:] + resolved_backup[1:]:
-        if s not in resolved_streams:
-            resolved_streams.append(s)
-
-    if resolved_streams:
-        ChannelStream.objects.filter(channel=channel).delete()
-        for idx, stream in enumerate(resolved_streams, start=1):
-            ChannelStream.objects.create(
-                channel=channel,
-                stream=stream,
-                order=idx
-            )
-        streams_summary = " -> ".join([f"P{idx}:[{stream.m3u_account.name[:8] if stream.m3u_account else '?'}] {stream.name[:18]}" for idx, stream in enumerate(resolved_streams, start=1)])
-        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : {streams_summary}")
+    # Asignar estrictamente 1 único stream (orden=1), eliminando cualquier fallback
+    ChannelStream.objects.filter(channel=channel).delete()
+    if resolved_stream:
+        ChannelStream.objects.create(
+            channel=channel,
+            stream=resolved_stream,
+            order=1
+        )
+        acc_name = resolved_stream.m3u_account.name[:10] if resolved_stream.m3u_account else "Unknown"
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : [Stream 1] [{acc_name}] {resolved_stream.name}")
     else:
-        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : Sin streams disponibles")
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : ⚠️ Sin stream disponible")
 
 # -----------------------------------------------------------------------------
-# 5b. Logotipos Oficiales Transparentes en Alta Definición (Sin fondos blancos)
+# 5b. Logotipos Oficiales Transparentes en Alta Definición
 # -----------------------------------------------------------------------------
 print("\n--- Sincronizando Logotipos Transparentes HD ---")
 channel_logos = {
@@ -409,62 +396,75 @@ for ch_num, (logo_title, logo_url) in channel_logos.items():
         print(f"  [Ch {int(ch_num):02d}] Logo asignado: {logo_obj.name}")
 
 # -----------------------------------------------------------------------------
-# 6. Fuente EPG Externa y Vinculación
+# 6. Fuentes EPG Múltiples (Latam Sports + Trex XMLTV) y Mapeo Exacto
 # -----------------------------------------------------------------------------
-print("\n--- Sincronizando Guía de Programación (EPG) ---")
-epg_source, e_created = EPGSource.objects.get_or_create(
-    url=EPG_URL,
-    defaults={
-        'name': EPG_NAME,
-        'source_type': 'url',
-        'is_active': True
-    }
-)
-if not e_created:
-    epg_source.name = EPG_NAME
-    epg_source.is_active = True
-    epg_source.save()
-print(f"✅ Fuente EPG: {epg_source.name} [{epg_source.url}]")
+print("\n--- Sincronizando Fuentes EPG y Guía de Programación ---")
+from apps.epg.tasks import fetch_xmltv, parse_channels_only, parse_programs_for_source
 
-# Mapeo de canales a EPG
-epg_mapping = {
-    1: 171,  # ESPN Premium -> ESPN Premium HD (a1ty)
-    2: 155,  # TNT Sports -> TNT Sports HD (a1sm)
-    3: 153,  # TyC Sports -> TyC Sports HD (a1sk)
-    4: 170,  # Fox Sports 1 -> Fox Sports HD (a1tx)
-    5: 129,  # Fox Sports 2 -> Fox Sports 2 HD (a1r3)
-    6: 154,  # Fox Sports 3 -> Fox Sports 3 HD (a1sl)
-    7: 100,  # ESPN -> ESPN HD (a1jl)
-    8: 96,   # ESPN 2 -> ESPN 2 HD (a1jc)
-    9: 113,  # ESPN 3 -> ESPN 3 HD (a1kf)
-    10: 93,  # ESPN Extra -> ESPN 4HD (a1j1)
+# 6a. Fuente 1: Latam Sports EPG (ESPN Premium, ESPN Sur, TyC, DSports)
+epg_latam, _ = EPGSource.objects.get_or_create(
+    url="https://raw.githubusercontent.com/siulemorales-arch/latam-sports-epg/main/epg.xml",
+    defaults={"name": "EPG Latam Sports", "source_type": "url", "is_active": True, "refresh_interval": 12}
+)
+epg_latam.name = "EPG Latam Sports"
+epg_latam.refresh_interval = 12
+epg_latam.is_active = True
+epg_latam.save()
+print(f"✅ Fuente EPG 1: {epg_latam.name} [{epg_latam.url}] (Auto-refresh: 12h)")
+
+# 6b. Fuente 2: Trex XMLTV (TNT Sports, Fox Sports 1, 2, 3)
+epg_trex, _ = EPGSource.objects.get_or_create(
+    url=f"{BACKUP_PROVIDER_SERVER_URL}/xmltv.php?username={BACKUP_PROVIDER_USERNAME}&password={BACKUP_PROVIDER_PASSWORD}",
+    defaults={"name": "EPG Trex OTT", "source_type": "url", "is_active": True, "refresh_interval": 12}
+)
+epg_trex.name = "EPG Trex OTT"
+epg_trex.refresh_interval = 12
+epg_trex.is_active = True
+epg_trex.save()
+print(f"✅ Fuente EPG 2: {epg_trex.name} [{epg_trex.url}] (Auto-refresh: 12h)")
+
+# Asegurar que los canales de ambas fuentes estén indexados en EPGData
+for src in [epg_latam, epg_trex]:
+    if EPGData.objects.filter(epg_source=src).count() == 0:
+        print(f"  Descargando e indexando canales para {src.name}...")
+        if fetch_xmltv(src):
+            parse_channels_only(src)
+
+# Vincular cada canal con su EPGData correspondiente
+sources_map = {
+    "latam": epg_latam,
+    "trex": epg_trex,
 }
 
-epg_ids_to_refresh = []
-for ch_num, epg_id in epg_mapping.items():
-    try:
-        channel = Channel.objects.filter(channel_number=ch_num).first()
-        epg_data = EPGData.objects.filter(id=epg_id).first()
-        if channel and epg_data:
-            channel.epg_data = epg_data
-            channel.tvg_id = epg_data.tvg_id
-            channel.save()
-            epg_ids_to_refresh.append(epg_data.id)
-            print(f"  [Ch {int(ch_num):02d}] EPG asignada: {epg_data.name} (tvg-id: {epg_data.tvg_id})")
-    except Exception as e:
-        print(f"  [Aviso] No se pudo mapear EPG para canal {ch_num}: {e}")
+for cfg in channels_config:
+    ch_num = cfg["number"]
+    tvg_id = cfg.get("epg_tvg_id")
+    src = sources_map.get(cfg.get("epg_source_type"))
+    if not tvg_id or not src:
+        continue
 
-try:
-    from apps.epg.tasks import fetch_xmltv, parse_programs_for_source
-    ProgramData = apps.get_model('epg', 'ProgramData')
-    print("\n  Descargando y parseando programas de la guía...")
-    if fetch_xmltv(epg_source):
-        parse_programs_for_source(epg_source)
-        prog_count = ProgramData.objects.count()
-        print(f"✅ Guía actualizada: {prog_count} programas sincronizados para canales activos.")
-except Exception as e:
-    print(f"  [Aviso] Error sincronizando programas EPG: {e}")
+    channel = Channel.objects.filter(channel_number=ch_num).first()
+    epg_data = EPGData.objects.filter(epg_source=src, tvg_id=tvg_id).first()
+    if channel and epg_data:
+        channel.epg_data = epg_data
+        channel.tvg_id = epg_data.tvg_id
+        channel.save()
+        print(f"  [Ch {int(ch_num):02d}] EPG vinculada: {epg_data.name} (tvg-id: {epg_data.tvg_id})")
+    else:
+        print(f"  [Ch {int(ch_num):02d}] ⚠️ No se encontró entrada EPG para tvg-id: {tvg_id}")
+
+# Parsear los programas de las fuentes para los canales mapeados
+ProgramData = apps.get_model('epg', 'ProgramData')
+for src in [epg_latam, epg_trex]:
+    try:
+        print(f"\n  Sincronizando programas para {src.name}...")
+        parse_programs_for_source(src)
+    except Exception as e:
+        print(f"  [Aviso] Error parseando programas de {src.name}: {e}")
+
+prog_count = ProgramData.objects.count()
+print(f"\n✅ Guía EPG actualizada con éxito: {prog_count} programas sincronizados en total.")
 
 print("\n" + "=" * 60)
-print("🎉 ¡Aprovisionamiento completado con éxito!")
+print("🎉 ¡Aprovisionamiento completado con éxito! (1 Stream por Canal - Cero Failover)")
 print("=" * 60)
