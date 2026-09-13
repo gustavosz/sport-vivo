@@ -29,8 +29,8 @@ flowchart TD
     subgraph Host ["Entorno Docker / OrbStack"]
         subgraph SportVivo ["sport-vivo (Dispatcharr AIO :9191)"]
             Proxy["Proxy de Conexión (Pool 1 Stream)"]
-            Failover["Motor de Failover (Stream 1 ➔ Stream 2)"]
-            DB[(PostgreSQL / SQLite & Redis)]
+            Failover["Motor de Failover: Stream Principal a Backup"]
+            DB[("PostgreSQL / SQLite y Redis")]
             API["Xtream Codes & M3U/XMLTV Server"]
         end
         
@@ -44,13 +44,13 @@ flowchart TD
         WebJF["Jellyfin Web / Apps"]
     end
 
-    Trex -->|Streams RAW / HD| Proxy
-    EPGExt -->|Guía y Logos| DB
+    Trex -->|Streams RAW y HD| Proxy
+    EPGExt -->|Guia y Logos| DB
     Proxy --> Failover
     Failover --> API
 
-    API -->|Xtream Codes API / M3U / EPG| TV
-    API -.->|M3U / XMLTV interno (media-net)| JF
+    API -->|Xtream Codes / M3U / EPG| TV
+    API -.->|M3U y XMLTV en red media-net| JF
     JF --> WebJF
 ```
 
