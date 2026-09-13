@@ -1,0 +1,30 @@
+# Secretos y credenciales personales (NUNCA subir a GitHub)
+.env
+*.env
+!.env.example
+
+# Volúmenes de datos, base de datos SQLite/Postgres y cachés locales
+data/
+db/
+config/
+
+# Archivos del sistema macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Python cachés y entornos
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+
+# Logs y temporales
+*.log
+*.tmp

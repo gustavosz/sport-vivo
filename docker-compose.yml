@@ -1,0 +1,24 @@
+services:
+  dispatcharr:
+    image: ghcr.io/dispatcharr/dispatcharr:latest
+    container_name: dispatcharr
+    restart: unless-stopped
+    ports:
+      - "${DISPATCHARR_PORT:-9191}:9191"
+    volumes:
+      - ${DISPATCHARR_DATA_DIR:-./data}:/data
+    environment:
+      - DISPATCHARR_ENV=aio
+      - REDIS_HOST=localhost
+      - CELERY_BROKER_URL=redis://localhost:6379/0
+      - DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL:-info}
+    networks:
+      - default
+      - media-net
+
+networks:
+  default:
+    name: sport-vivo-default
+  media-net:
+    name: ${DOCKER_NETWORK:-media-net}
+    external: true
