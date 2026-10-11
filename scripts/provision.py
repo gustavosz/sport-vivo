@@ -31,7 +31,7 @@ ChannelGroup = apps.get_model('dispatcharr_channels', 'ChannelGroup')
 ChannelStream = apps.get_model('dispatcharr_channels', 'ChannelStream')
 Stream = apps.get_model('dispatcharr_channels', 'Stream')
 Logo = apps.get_model('dispatcharr_channels', 'Logo')
-from dispatcharr.redis_client import RedisClient
+from core.utils import RedisClient
 
 # Variables desde el entorno (con defaults)
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -219,10 +219,10 @@ print(f"✅ Perfil de Streaming Estable activo: {stream_profile_fast.name} (buff
 channels_config = [
     {
         "number": 1,
-        "name": "ESPN Premium",
-        "stream_id": 84034,  # Eagle 4K: |ARG| FOX SPORTS PREMIUM ᴴᴰ (Pack Fútbol)
-        "hint": "FOX SPORTS PREMIUM",
-        "epg_tvg_id": "espn.premium.argentina.latam",
+        "name": "ESPN 5 HD",
+        "stream_id": 86467,  # Eagle 4K: ESPN 5HD (Transmite fútbol argentino para el exterior)
+        "hint": "ESPN 5HD",
+        "epg_tvg_id": "espn.5.sur.latam",
         "epg_source_type": "latam",
     },
     {
@@ -321,6 +321,30 @@ channels_config = [
         "epg_tvg_id": "dsports.plus.latam",
         "epg_source_type": "latam",
     },
+    {
+        "number": 14,
+        "name": "TV Pública",
+        "stream_id": 84019,  # Eagle 4K: |ARG| TV PUBLICA (Selección Argentina / TC)
+        "hint": "TV PUBLICA",
+        "epg_tvg_id": "tvpublica.ar",
+        "epg_source_type": "trex",
+    },
+    {
+        "number": 15,
+        "name": "DeporTV",
+        "stream_id": 84038,  # Eagle 4K: |ARG| DEPORTV (Deporte estatal argentino)
+        "hint": "DEPORTV",
+        "epg_tvg_id": None,
+        "epg_source_type": None,
+    },
+    {
+        "number": 16,
+        "name": "El Garage TV",
+        "stream_id": 83979,  # Eagle 4K: |ARG|  GARAGE. (Automovilismo nacional)
+        "hint": "GARAGE",
+        "epg_tvg_id": "elgarage.ar",
+        "epg_source_type": "trex",
+    },
 ]
 
 print("\n--- Sincronizando Canales (1 Canal = 1 Stream Argentino Único, SIN Failover) ---")
@@ -362,11 +386,76 @@ for cfg in channels_config:
         print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : ⚠️ Sin stream disponible")
 
 # -----------------------------------------------------------------------------
-# 5b. Logotipos Oficiales Transparentes en Alta Definición
+# 5b. Grupo Secundario: Eventos Fútbol / Disney+
+# -----------------------------------------------------------------------------
+events_group, _ = ChannelGroup.objects.get_or_create(name="Eventos Fútbol / Disney+")
+print(f"\n✅ Grupo Secundario: '{events_group.name}' listo")
+
+events_channels_config = [
+    {"number": 101, "name": "Liga Profesional 1", "stream_id": 84094, "hint": "Liga Profesional De Futbol 1"},
+    {"number": 102, "name": "Liga Profesional 2", "stream_id": 84098, "hint": "Liga Profesional De Futbol 2"},
+    {"number": 103, "name": "Liga Profesional 3", "stream_id": 84100, "hint": "Liga Profesional De Futbol 3"},
+    {"number": 104, "name": "Liga Profesional 4", "stream_id": 84101, "hint": "Liga Profesional De Futbol 4"},
+    {"number": 105, "name": "Liga Profesional 5", "stream_id": 84103, "hint": "Liga Profesional De Futbol 5"},
+    {"number": 106, "name": "Liga Profesional 6", "stream_id": 84105, "hint": "Liga Profesional De Futbol 6"},
+    {"number": 107, "name": "Liga Profesional 7", "stream_id": 84106, "hint": "Liga Profesional De Futbol 7"},
+    {"number": 108, "name": "Liga Profesional 8", "stream_id": 84107, "hint": "Liga Profesional De Futbol 8"},
+    {"number": 109, "name": "Liga Profesional 9", "stream_id": 84109, "hint": "Liga Profesional De Futbol 9"},
+    {"number": 110, "name": "Liga Profesional 10", "stream_id": 84111, "hint": "Liga Profesional De Futbol 10"},
+    {"number": 111, "name": "TyC Sports Internacional", "stream_id": 84022, "hint": "TyC SPORTS INTERNACIONAL"},
+    {"number": 112, "name": "Fox Sports Premium (FS)", "stream_id": 84034, "hint": "FOX SPORTS PREMIUM"},
+    {"number": 113, "name": "Disney+ Event 1", "stream_id": 84113, "hint": "D+ AR 001"},
+    {"number": 114, "name": "Disney+ Event 2", "stream_id": 84115, "hint": "D+ AR 002"},
+    {"number": 115, "name": "Disney+ Event 3", "stream_id": 84117, "hint": "D+ AR 003"},
+    {"number": 116, "name": "Disney+ Event 4", "stream_id": 84119, "hint": "D+ AR 004"},
+    {"number": 117, "name": "Disney+ Event 5", "stream_id": 84121, "hint": "D+ AR 005"},
+    {"number": 118, "name": "River / Boca - Partido en Vivo", "stream_id": 84094, "hint": "Argentina Liga Profesional De Futbol 1"},
+    {"number": 119, "name": "Disney+ ESPN F90", "stream_id": 84168, "hint": "ESPN F90 Argentina"},
+    {"number": 120, "name": "Disney+ ESPN F360", "stream_id": 84190, "hint": "ESPN F360"},
+]
+
+print("\n--- Sincronizando Canales de Eventos Fútbol & Disney+ ---")
+for cfg in events_channels_config:
+    channel, ch_created = Channel.objects.get_or_create(
+        channel_number=cfg["number"],
+        defaults={
+            "name": cfg["name"],
+            "channel_group": events_group,
+            "stream_profile": stream_profile_fast,
+            "hidden_from_output": False
+        }
+    )
+    if not ch_created:
+        channel.name = cfg["name"]
+        channel.channel_group = events_group
+        channel.stream_profile = stream_profile_fast
+        channel.hidden_from_output = False
+        channel.save()
+
+    resolved_stream = None
+    if cfg.get("stream_id"):
+        resolved_stream = Stream.objects.filter(id=cfg["stream_id"]).first()
+    if not resolved_stream and cfg.get("hint"):
+        resolved_stream = Stream.objects.filter(name__icontains=cfg["hint"]).first()
+
+    ChannelStream.objects.filter(channel=channel).delete()
+    if resolved_stream:
+        ChannelStream.objects.create(
+            channel=channel,
+            stream=resolved_stream,
+            order=1
+        )
+        acc_name = resolved_stream.m3u_account.name[:10] if resolved_stream.m3u_account else "Unknown"
+        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : [Stream 1] [{acc_name}] {resolved_stream.name}")
+    else:
+        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : ⚠️ Sin stream disponible")
+
+# -----------------------------------------------------------------------------
+# 5c. Logotipos Oficiales Transparentes en Alta Definición
 # -----------------------------------------------------------------------------
 print("\n--- Sincronizando Logotipos Transparentes HD ---")
 channel_logos = {
-    1: ("ESPN Premium", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-premium-ar.png"),
+    1: ("ESPN 5 HD", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/espn-ar.png"),
     2: ("TNT Sports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/tnt-sports-ar.png"),
     3: ("TyC Sports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/tyc-sports-ar.png"),
     4: ("Fox Sports 1", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/fox-sports-ar.png"),
@@ -379,6 +468,9 @@ channel_logos = {
     11: ("DSports", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports-lam.png"),
     12: ("DSports 2", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports2-lam.png"),
     13: ("DSports+", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/world-latin-america/dsports-plus-lam.png"),
+    14: ("TV Pública", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/television-publica-ar.png"),
+    15: ("DeporTV", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/deportv-ar.png"),
+    16: ("El Garage TV", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/el-garage-tv-ar.png"),
 }
 
 for ch_num, (logo_title, logo_url) in channel_logos.items():
@@ -404,9 +496,10 @@ from apps.epg.tasks import fetch_xmltv, parse_channels_only, parse_programs_for_
 # 6a. Fuente 1: Latam Sports EPG (ESPN Premium, ESPN Sur, TyC, DSports)
 epg_latam, _ = EPGSource.objects.get_or_create(
     url="https://raw.githubusercontent.com/siulemorales-arch/latam-sports-epg/main/epg.xml",
-    defaults={"name": "EPG Latam Sports", "source_type": "url", "is_active": True, "refresh_interval": 12}
+    defaults={"name": "EPG Latam Sports", "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
 )
 epg_latam.name = "EPG Latam Sports"
+epg_latam.source_type = "xmltv"
 epg_latam.refresh_interval = 12
 epg_latam.is_active = True
 epg_latam.save()
@@ -415,9 +508,10 @@ print(f"✅ Fuente EPG 1: {epg_latam.name} [{epg_latam.url}] (Auto-refresh: 12h)
 # 6b. Fuente 2: Trex XMLTV (TNT Sports, Fox Sports 1, 2, 3)
 epg_trex, _ = EPGSource.objects.get_or_create(
     url=f"{BACKUP_PROVIDER_SERVER_URL}/xmltv.php?username={BACKUP_PROVIDER_USERNAME}&password={BACKUP_PROVIDER_PASSWORD}",
-    defaults={"name": "EPG Trex OTT", "source_type": "url", "is_active": True, "refresh_interval": 12}
+    defaults={"name": "EPG Trex OTT", "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
 )
 epg_trex.name = "EPG Trex OTT"
+epg_trex.source_type = "xmltv"
 epg_trex.refresh_interval = 12
 epg_trex.is_active = True
 epg_trex.save()
