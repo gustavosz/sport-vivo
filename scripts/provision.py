@@ -155,6 +155,20 @@ if BACKUP_PROVIDER_USERNAME and BACKUP_PROVIDER_SERVER_URL:
     p2_action = "Registrado" if p2_created else "Actualizado"
     print(f"✅ Proveedor Failover  : {provider_backup.name} [{provider_backup.server_url}] (Límite: {provider_backup.max_streams} stream, Auto-refresh: 24h) ({p2_action})")
 
+# 2c. Verificar si el Proveedor Principal necesita importar streams
+primary_streams_count = Stream.objects.filter(m3u_account=provider_primary).count()
+if primary_streams_count == 0:
+    print(f"📥 Descargando e importando catálogo de canales para '{provider_primary.name}'...")
+    try:
+        from apps.m3u.tasks import refresh_single_m3u_account
+        refresh_single_m3u_account(provider_primary.id)
+        primary_streams_count = Stream.objects.filter(m3u_account=provider_primary).count()
+        print(f"✅ Streams importados exitosamente: {primary_streams_count} canales.")
+    except Exception as e:
+        print(f"⚠️ Advertencia al importar streams: {e}")
+else:
+    print(f"ℹ️ Proveedor Principal ya tiene {primary_streams_count} streams cargados.")
+
 # -----------------------------------------------------------------------------
 # 3. Usuario Cliente IPTV (TiviMate, Smart TV, Jellyfin)
 # -----------------------------------------------------------------------------
@@ -189,20 +203,20 @@ stream_profile_fast, _ = StreamProfile.objects.get_or_create(
     name="ffmpeg-fast-failover",
     defaults={
         "command": "ffmpeg",
-        "parameters": "-user_agent {userAgent} -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1",
+        "parameters": "-user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1",
         "locked": False,
         "is_active": True,
         "user_agent_id": 1,
     }
 )
 stream_profile_fast.command = "ffmpeg"
-stream_profile_fast.parameters = "-user_agent {userAgent} -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1"
+stream_profile_fast.parameters = "-user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1"
 stream_profile_fast.save()
 
-# Establecer buffering_timeout a 15s (valor óptimo para absorber jitter y reconexiones)
+# Establecer buffering_speed a 0.1 (evita falsos positivos en streams con jitter) y buffering_timeout a 30s
 p_settings = CoreSettings.get_proxy_settings()
-p_settings['buffering_timeout'] = 15
-p_settings['buffering_speed'] = 1.0
+p_settings['buffering_timeout'] = 30
+p_settings['buffering_speed'] = 0.1
 CoreSettings._update_group(PROXY_SETTINGS_KEY, "Proxy Settings", p_settings)
 CoreSettings.invalidate_group_cache(PROXY_SETTINGS_KEY)
 
@@ -211,143 +225,216 @@ s_settings = CoreSettings.get_stream_settings()
 s_settings['default_stream_profile'] = stream_profile_fast.id
 CoreSettings._update_group(STREAM_SETTINGS_KEY, "Stream Settings", s_settings)
 CoreSettings.invalidate_group_cache(STREAM_SETTINGS_KEY)
-print(f"✅ Perfil de Streaming Estable activo: {stream_profile_fast.name} (buffering_timeout: 15s, rw_timeout: 15s)")
+print(f"✅ Perfil de Streaming Estable activo: {stream_profile_fast.name} (buffering_timeout: 30s, buffering_speed: 0.1, auto-reconnect: ON)")
 
 # -----------------------------------------------------------------------------
-# 5. Configuración de Canales Curados (Sin Failover - 1 Señal Argentina Única)
+# 5. Configuración de Canales Curados (Resolución Dinámica por Proveedor Activo)
 # -----------------------------------------------------------------------------
 channels_config = [
     {
         "number": 1,
-        "name": "ESPN 5 HD",
-        "stream_id": 86467,  # Eagle 4K: ESPN 5HD (Transmite fútbol argentino para el exterior)
-        "hint": "ESPN 5HD",
-        "epg_tvg_id": "espn.5.sur.latam",
+        "name": "ESPN Premium",
+        "aliases": [
+            "ARG: ESPN PREMIUM",        # Trex OTT (Señal nativa con Pollo Vignolo)
+            "ESPN PREMIUM",             # Genérico
+            "FOX SPORTS PREMIUM",       # Eagle 4K / Legacy
+            "ESPN 5HD",                 # Fallback exterior
+            "ESPN 5 HD",
+        ],
+        "epg_tvg_id": "espn.premium.argentina.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 2,
         "name": "TNT Sports",
-        "stream_id": 84035,  # Eagle 4K: |ARG| TNT SPORT
-        "hint": "TNT SPORT",
+        "aliases": [
+            "ARG: TNT SPORTS",          # Trex OTT
+            "|ARG| TNT SPORT",          # Eagle 4K
+            "TNT SPORTS",
+            "TNT SPORT",
+        ],
         "epg_tvg_id": "tntsports.ar",
         "epg_source_type": "trex",
     },
     {
         "number": 3,
         "name": "TyC Sports",
-        "stream_id": 84023,  # Eagle 4K: |ARG| TYC SPORTS
-        "hint": "TYC SPORTS",
+        "aliases": [
+            "ARG: TYC SPORTS",          # Trex OTT
+            "|ARG| TYC SPORTS",         # Eagle 4K
+            "TYC SPORTS",
+        ],
         "epg_tvg_id": "tyc.sports.argentina.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 4,
         "name": "Fox Sports 1",
-        "stream_id": 84031,  # Eagle 4K: |ARG| FOX SPORTS 1 ᴴᴰ (Transmite Fórmula 1 en directo en Argentina)
-        "hint": "FOX SPORTS 1 ᴴᴰ",
+        "aliases": [
+            "ARG: FOX SPORTS 1",        # Trex OTT (Fórmula 1 en vivo)
+            "|ARG| FOX SPORTS 1",       # Eagle 4K
+            "FOX SPORTS 1",
+        ],
         "epg_tvg_id": "foxsports.ar",
         "epg_source_type": "trex",
     },
     {
         "number": 5,
         "name": "Fox Sports 2",
-        "stream_id": 84033,  # Eagle 4K: |ARG| FOX SPORTS 2 ᴴᴰ
-        "hint": "FOX SPORTS 2 ᴴᴰ",
+        "aliases": [
+            "ARG: FOX SPORTS 2",        # Trex OTT
+            "|ARG| FOX SPORTS 2",       # Eagle 4K
+            "FOX SPORTS 2",
+        ],
         "epg_tvg_id": "foxsports2.ar",
         "epg_source_type": "trex",
     },
     {
         "number": 6,
         "name": "Fox Sports 3",
-        "stream_id": 84030,  # Eagle 4K: |ARG| FOX SPORT 3
-        "hint": "FOX SPORT 3",
+        "aliases": [
+            "ARG: FOX SPORTS 3",        # Trex OTT
+            "|ARG| FOX SPORT 3",        # Eagle 4K
+            "FOX SPORTS 3",
+            "FOX SPORT 3",
+        ],
         "epg_tvg_id": "foxsports3.ar",
         "epg_source_type": "trex",
     },
     {
         "number": 7,
         "name": "ESPN",
-        "stream_id": 84024,  # Eagle 4K: |ARG| ESPN
-        "hint": "|ARG| ESPN",
+        "aliases": [
+            "ARG: ESPN ᴿᴬᵂ",            # Trex OTT
+            "ARG: ESPN",
+            "|ARG| ESPN",               # Eagle 4K
+            "|LAM| ESPN",
+            "ESPN",
+        ],
         "epg_tvg_id": "espn.sur.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 8,
         "name": "ESPN 2",
-        "stream_id": 87565,  # Eagle 4K: |LAM| ESPN 2 ᵁᴴᴰ (720p 60fps fluido sin artefactos)
-        "hint": "ESPN 2",
+        "aliases": [
+            "ARG: ESPN 2",              # Trex OTT
+            "|ARG| ESPN 2",             # Eagle 4K
+            "|LAM| ESPN 2",
+            "ESPN 2",
+        ],
         "epg_tvg_id": "espn.2.sur.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 9,
         "name": "ESPN 3",
-        "stream_id": 87600,  # Eagle 4K: |LAM| ESPN 3 ᵁᴴᴰ (720p 30fps)
-        "hint": "ESPN 3",
+        "aliases": [
+            "ARG: ESPN 3",              # Trex OTT
+            "|ARG| ESPN 3",             # Eagle 4K
+            "|LAM| ESPN 3",
+            "ESPN 3",
+        ],
         "epg_tvg_id": "espn.3.sur.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 10,
         "name": "ESPN Extra",
-        "stream_id": 84026,  # Eagle 4K: |ARG| ESPN+
-        "hint": "ESPN+",
+        "aliases": [
+            "ARG: ESPN EXTRA",          # Trex OTT
+            "|ARG| ESPN+",              # Eagle 4K
+            "ESPN EXTRA",
+            "ESPN+",
+        ],
         "epg_tvg_id": "espn.4.sur.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 11,
         "name": "DSports (DirecTV 1)",
-        "stream_id": 84039,  # Eagle 4K: |ARG| DIRECT TV SPORTS
-        "hint": "DIRECT TV SPORTS",
+        "aliases": [
+            "DIRECTV SPORTS 1",
+            "DIRECTV SPORTS HD",
+            "|ARG| DIRECT TV SPORTS",
+            "DIRECT TV SPORTS",
+            "DSPORTS",
+        ],
         "epg_tvg_id": "DSPORTS | AR",
         "epg_source_type": "latam",
     },
     {
         "number": 12,
         "name": "DSports 2",
-        "stream_id": 84040,  # Eagle 4K: |ARG| DIRECT TV SPORTS 2
-        "hint": "DIRECT TV SPORTS 2",
+        "aliases": [
+            "DIRECTV SPORTS 2",
+            "|ARG| DIRECT TV SPORTS 2",
+            "DIRECT TV SPORTS 2",
+            "DSPORTS 2",
+        ],
         "epg_tvg_id": "DSPORTS 2 | ARGENTINA",
         "epg_source_type": "latam",
     },
     {
         "number": 13,
         "name": "DSports+ / DTV",
-        "stream_id": 84041,  # Eagle 4K: |ARG| DIRECT TV SPORTS PLUS
-        "hint": "DIRECT TV SPORTS PLUS",
+        "aliases": [
+            "DIRECTV SPORTS PLUS",
+            "|ARG| DIRECT TV SPORTS PLUS",
+            "DIRECT TV SPORTS PLUS",
+            "DSPORTS+",
+        ],
         "epg_tvg_id": "dsports.plus.latam",
         "epg_source_type": "latam",
     },
     {
         "number": 14,
         "name": "TV Pública",
-        "stream_id": 84019,  # Eagle 4K: |ARG| TV PUBLICA (Selección Argentina / TC)
-        "hint": "TV PUBLICA",
+        "aliases": [
+            "ARG: TV PUBLICA",          # Trex OTT
+            "|ARG| TV PUBLICA",         # Eagle 4K
+            "TV PUBLICA",
+            "TELEVISION PUBLICA",
+        ],
         "epg_tvg_id": "tvpublica.ar",
         "epg_source_type": "trex",
     },
     {
         "number": 15,
         "name": "DeporTV",
-        "stream_id": 84038,  # Eagle 4K: |ARG| DEPORTV (Deporte estatal argentino)
-        "hint": "DEPORTV",
+        "aliases": [
+            "ARG: DEPORTV",
+            "|ARG| DEPORTV",
+            "DEPORTV",
+        ],
         "epg_tvg_id": None,
         "epg_source_type": None,
     },
     {
         "number": 16,
         "name": "El Garage TV",
-        "stream_id": 83979,  # Eagle 4K: |ARG|  GARAGE. (Automovilismo nacional)
-        "hint": "GARAGE",
+        "aliases": [
+            "ARG: GARAGE TV",           # Trex OTT
+            "|ARG|  GARAGE.",           # Eagle 4K
+            "EL GARAGE TV",
+            "GARAGE TV",
+        ],
         "epg_tvg_id": "elgarage.ar",
         "epg_source_type": "trex",
     },
 ]
 
-print("\n--- Sincronizando Canales (1 Canal = 1 Stream Argentino Único, SIN Failover) ---")
+def find_stream_for_channel(account, aliases):
+    """Busca en el proveedor indicado el mejor stream coincidente por alias."""
+    if not account:
+        return None
+    for alias in aliases:
+        s = Stream.objects.filter(m3u_account=account, name__icontains=alias).first()
+        if s:
+            return s
+    return None
+
+print(f"\n--- Sincronizando Canales contra Proveedor Primario: {provider_primary.name} ---")
 for cfg in channels_config:
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=cfg["number"],
@@ -365,12 +452,10 @@ for cfg in channels_config:
         channel.hidden_from_output = False
         channel.save()
 
-    # Resolver stream único por ID o por Hint
-    resolved_stream = None
-    if cfg.get("stream_id"):
-        resolved_stream = Stream.objects.filter(id=cfg["stream_id"]).first()
-    if not resolved_stream and cfg.get("hint"):
-        resolved_stream = Stream.objects.filter(name__icontains=cfg["hint"]).first()
+    # Resolver stream dinámicamente: primero en proveedor principal, luego en backup
+    resolved_stream = find_stream_for_channel(provider_primary, cfg.get("aliases", []))
+    if not resolved_stream and provider_backup:
+        resolved_stream = find_stream_for_channel(provider_backup, cfg.get("aliases", []))
 
     # Asignar estrictamente 1 único stream (orden=1), eliminando cualquier fallback
     ChannelStream.objects.filter(channel=channel).delete()
@@ -383,38 +468,38 @@ for cfg in channels_config:
         acc_name = resolved_stream.m3u_account.name[:10] if resolved_stream.m3u_account else "Unknown"
         print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : [Stream 1] [{acc_name}] {resolved_stream.name}")
     else:
-        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : ⚠️ Sin stream disponible")
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : ⚠️ Sin stream disponible en el proveedor")
 
 # -----------------------------------------------------------------------------
-# 5b. Grupo Secundario: Eventos Fútbol / Disney+
+# 5b. Grupo Secundario: Eventos Fútbol / Canales Especiales
 # -----------------------------------------------------------------------------
 events_group, _ = ChannelGroup.objects.get_or_create(name="Eventos Fútbol / Disney+")
 print(f"\n✅ Grupo Secundario: '{events_group.name}' listo")
 
 events_channels_config = [
-    {"number": 101, "name": "Liga Profesional 1", "stream_id": 84094, "hint": "Liga Profesional De Futbol 1"},
-    {"number": 102, "name": "Liga Profesional 2", "stream_id": 84098, "hint": "Liga Profesional De Futbol 2"},
-    {"number": 103, "name": "Liga Profesional 3", "stream_id": 84100, "hint": "Liga Profesional De Futbol 3"},
-    {"number": 104, "name": "Liga Profesional 4", "stream_id": 84101, "hint": "Liga Profesional De Futbol 4"},
-    {"number": 105, "name": "Liga Profesional 5", "stream_id": 84103, "hint": "Liga Profesional De Futbol 5"},
-    {"number": 106, "name": "Liga Profesional 6", "stream_id": 84105, "hint": "Liga Profesional De Futbol 6"},
-    {"number": 107, "name": "Liga Profesional 7", "stream_id": 84106, "hint": "Liga Profesional De Futbol 7"},
-    {"number": 108, "name": "Liga Profesional 8", "stream_id": 84107, "hint": "Liga Profesional De Futbol 8"},
-    {"number": 109, "name": "Liga Profesional 9", "stream_id": 84109, "hint": "Liga Profesional De Futbol 9"},
-    {"number": 110, "name": "Liga Profesional 10", "stream_id": 84111, "hint": "Liga Profesional De Futbol 10"},
-    {"number": 111, "name": "TyC Sports Internacional", "stream_id": 84022, "hint": "TyC SPORTS INTERNACIONAL"},
-    {"number": 112, "name": "Fox Sports Premium (FS)", "stream_id": 84034, "hint": "FOX SPORTS PREMIUM"},
-    {"number": 113, "name": "Disney+ Event 1", "stream_id": 84113, "hint": "D+ AR 001"},
-    {"number": 114, "name": "Disney+ Event 2", "stream_id": 84115, "hint": "D+ AR 002"},
-    {"number": 115, "name": "Disney+ Event 3", "stream_id": 84117, "hint": "D+ AR 003"},
-    {"number": 116, "name": "Disney+ Event 4", "stream_id": 84119, "hint": "D+ AR 004"},
-    {"number": 117, "name": "Disney+ Event 5", "stream_id": 84121, "hint": "D+ AR 005"},
-    {"number": 118, "name": "River / Boca - Partido en Vivo", "stream_id": 84094, "hint": "Argentina Liga Profesional De Futbol 1"},
-    {"number": 119, "name": "Disney+ ESPN F90", "stream_id": 84168, "hint": "ESPN F90 Argentina"},
-    {"number": 120, "name": "Disney+ ESPN F360", "stream_id": 84190, "hint": "ESPN F360"},
+    {"number": 101, "name": "Liga Profesional 1", "aliases": ["Liga Profesional De Futbol 1", "ARG: LIGA PROFESIONAL 1", "LPF 1"]},
+    {"number": 102, "name": "Liga Profesional 2", "aliases": ["Liga Profesional De Futbol 2", "ARG: LIGA PROFESIONAL 2", "LPF 2"]},
+    {"number": 103, "name": "Liga Profesional 3", "aliases": ["Liga Profesional De Futbol 3", "ARG: LIGA PROFESIONAL 3", "LPF 3"]},
+    {"number": 104, "name": "Liga Profesional 4", "aliases": ["Liga Profesional De Futbol 4", "ARG: LIGA PROFESIONAL 4", "LPF 4"]},
+    {"number": 105, "name": "Liga Profesional 5", "aliases": ["Liga Profesional De Futbol 5", "ARG: LIGA PROFESIONAL 5", "LPF 5"]},
+    {"number": 106, "name": "Liga Profesional 6", "aliases": ["Liga Profesional De Futbol 6", "ARG: LIGA PROFESIONAL 6", "LPF 6"]},
+    {"number": 107, "name": "Liga Profesional 7", "aliases": ["Liga Profesional De Futbol 7", "ARG: LIGA PROFESIONAL 7", "LPF 7"]},
+    {"number": 108, "name": "Liga Profesional 8", "aliases": ["Liga Profesional De Futbol 8", "ARG: LIGA PROFESIONAL 8", "LPF 8"]},
+    {"number": 109, "name": "Liga Profesional 9", "aliases": ["Liga Profesional De Futbol 9", "ARG: LIGA PROFESIONAL 9", "LPF 9"]},
+    {"number": 110, "name": "Liga Profesional 10", "aliases": ["Liga Profesional De Futbol 10", "ARG: LIGA PROFESIONAL 10", "LPF 10"]},
+    {"number": 111, "name": "TyC Sports Internacional", "aliases": ["TYC SPORTS INTERNACIONAL", "TYC SPORTS INT"]},
+    {"number": 112, "name": "Fox Sports Premium (FS)", "aliases": ["FOX SPORTS PREMIUM", "ARG: FOX SPORTS PREMIUM"]},
+    {"number": 113, "name": "Evento Fútbol 1", "aliases": ["D+ AR 001", "ARG: EVENTO 1", "EVENT 1"]},
+    {"number": 114, "name": "Evento Fútbol 2", "aliases": ["D+ AR 002", "ARG: EVENTO 2", "EVENT 2"]},
+    {"number": 115, "name": "Evento Fútbol 3", "aliases": ["D+ AR 003", "ARG: EVENTO 3", "EVENT 3"]},
+    {"number": 116, "name": "Evento Fútbol 4", "aliases": ["D+ AR 004", "ARG: EVENTO 4", "EVENT 4"]},
+    {"number": 117, "name": "Evento Fútbol 5", "aliases": ["D+ AR 005", "ARG: EVENTO 5", "EVENT 5"]},
+    {"number": 118, "name": "River / Boca - Partido en Vivo", "aliases": ["Liga Profesional De Futbol 1", "ARG: ESPN PREMIUM", "ARG: TNT SPORTS"]},
+    {"number": 119, "name": "ESPN F90", "aliases": ["ESPN F90 Argentina", "F90"]},
+    {"number": 120, "name": "ESPN F360", "aliases": ["ESPN F360", "F360"]},
 ]
 
-print("\n--- Sincronizando Canales de Eventos Fútbol & Disney+ ---")
+print("\n--- Sincronizando Canales de Eventos Fútbol & Secundarios ---")
 for cfg in events_channels_config:
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=cfg["number"],
@@ -432,11 +517,9 @@ for cfg in events_channels_config:
         channel.hidden_from_output = False
         channel.save()
 
-    resolved_stream = None
-    if cfg.get("stream_id"):
-        resolved_stream = Stream.objects.filter(id=cfg["stream_id"]).first()
-    if not resolved_stream and cfg.get("hint"):
-        resolved_stream = Stream.objects.filter(name__icontains=cfg["hint"]).first()
+    resolved_stream = find_stream_for_channel(provider_primary, cfg.get("aliases", []))
+    if not resolved_stream and provider_backup:
+        resolved_stream = find_stream_for_channel(provider_backup, cfg.get("aliases", []))
 
     ChannelStream.objects.filter(channel=channel).delete()
     if resolved_stream:
@@ -448,7 +531,7 @@ for cfg in events_channels_config:
         acc_name = resolved_stream.m3u_account.name[:10] if resolved_stream.m3u_account else "Unknown"
         print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : [Stream 1] [{acc_name}] {resolved_stream.name}")
     else:
-        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : ⚠️ Sin stream disponible")
+        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : ⚠️ Sin stream disponible en el proveedor")
 
 # -----------------------------------------------------------------------------
 # 5c. Logotipos Oficiales Transparentes en Alta Definición
@@ -495,10 +578,10 @@ from apps.epg.tasks import fetch_xmltv, parse_channels_only, parse_programs_for_
 
 # 6a. Fuente 1: Latam Sports EPG (ESPN Premium, ESPN Sur, TyC, DSports)
 epg_latam, _ = EPGSource.objects.get_or_create(
-    url="https://raw.githubusercontent.com/siulemorales-arch/latam-sports-epg/main/epg.xml",
-    defaults={"name": "EPG Latam Sports", "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
+    name="EPG Latam Sports",
+    defaults={"url": "https://raw.githubusercontent.com/siulemorales-arch/latam-sports-epg/main/epg.xml", "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
 )
-epg_latam.name = "EPG Latam Sports"
+epg_latam.url = "https://raw.githubusercontent.com/siulemorales-arch/latam-sports-epg/main/epg.xml"
 epg_latam.source_type = "xmltv"
 epg_latam.refresh_interval = 12
 epg_latam.is_active = True
@@ -506,11 +589,12 @@ epg_latam.save()
 print(f"✅ Fuente EPG 1: {epg_latam.name} [{epg_latam.url}] (Auto-refresh: 12h)")
 
 # 6b. Fuente 2: Trex XMLTV (TNT Sports, Fox Sports 1, 2, 3)
+trex_xmltv_url = f"{PROVIDER_SERVER_URL}/xmltv.php?username={PROVIDER_USERNAME}&password={PROVIDER_PASSWORD}" if "business-cdn-8k" in PROVIDER_SERVER_URL else f"{BACKUP_PROVIDER_SERVER_URL}/xmltv.php?username={BACKUP_PROVIDER_USERNAME}&password={BACKUP_PROVIDER_PASSWORD}"
 epg_trex, _ = EPGSource.objects.get_or_create(
-    url=f"{BACKUP_PROVIDER_SERVER_URL}/xmltv.php?username={BACKUP_PROVIDER_USERNAME}&password={BACKUP_PROVIDER_PASSWORD}",
-    defaults={"name": "EPG Trex OTT", "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
+    name="EPG Trex OTT",
+    defaults={"url": trex_xmltv_url, "source_type": "xmltv", "is_active": True, "refresh_interval": 12}
 )
-epg_trex.name = "EPG Trex OTT"
+epg_trex.url = trex_xmltv_url
 epg_trex.source_type = "xmltv"
 epg_trex.refresh_interval = 12
 epg_trex.is_active = True

@@ -21,6 +21,9 @@ if [ ! -f "$ROOT_DIR/.env" ]; then
     exit 1
 fi
 
+# Validar y sincronizar IP local dinámicamente
+"$SCRIPT_DIR/validate_ip.sh"
+
 # Exportar variables del .env
 set -a
 source "$ROOT_DIR/.env"
@@ -73,13 +76,20 @@ docker exec -i \
     -e CLIENT_USERNAME="$CLIENT_USERNAME" \
     -e CLIENT_PASSWORD="$CLIENT_PASSWORD" \
     -e PROVIDER_NAME="$PROVIDER_NAME" \
+    -e PROVIDER_SELLER="$PROVIDER_SELLER" \
     -e PROVIDER_SERVER_URL="$PROVIDER_SERVER_URL" \
     -e PROVIDER_USERNAME="$PROVIDER_USERNAME" \
     -e PROVIDER_PASSWORD="$PROVIDER_PASSWORD" \
     -e PROVIDER_MAX_STREAMS="$PROVIDER_MAX_STREAMS" \
+    -e BACKUP_PROVIDER_NAME="$BACKUP_PROVIDER_NAME" \
+    -e BACKUP_PROVIDER_SELLER="$BACKUP_PROVIDER_SELLER" \
+    -e BACKUP_PROVIDER_SERVER_URL="$BACKUP_PROVIDER_SERVER_URL" \
+    -e BACKUP_PROVIDER_USERNAME="$BACKUP_PROVIDER_USERNAME" \
+    -e BACKUP_PROVIDER_PASSWORD="$BACKUP_PROVIDER_PASSWORD" \
+    -e BACKUP_PROVIDER_MAX_STREAMS="$BACKUP_PROVIDER_MAX_STREAMS" \
     -e EPG_NAME="$EPG_NAME" \
     -e EPG_URL="$EPG_URL" \
-    dispatcharr su - dispatch -c "cd /app && python -" < "$SCRIPT_DIR/provision.py"
+    dispatcharr su dispatch -c "cd /app && python -" < "$SCRIPT_DIR/provision.py"
 
 # 6. Banner informativo final
 echo ""

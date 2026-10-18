@@ -1,21 +1,24 @@
 # ==============================================================================
 # SPORT-VIVO: Makefile de Operaciones
 # ==============================================================================
-.PHONY: help up down restart logs status provision audit ranking match river boca
+.PHONY: help up down restart logs status provision audit ranking match river boca validate-ip daily-sync setup-cron
 
 help:
 	@echo "⚽ Comandos disponibles para Sport-Vivo:"
-	@echo "  make up         - Iniciar y aprovisionar el stack (Dispatcharr + Canales + EPG)"
-	@echo "  make down       - Detener el stack limpiamente"
-	@echo "  make restart    - Reiniciar el stack"
-	@echo "  make logs       - Ver logs en vivo de Dispatcharr"
-	@echo "  make status     - Ver estado del contenedor y servicios"
-	@echo "  make provision  - Re-ejecutar aprovisionamiento de canales y EPG"
-	@echo "  make match      - Auto-sincronizar partido de River o Boca en el Canal 118"
-	@echo "  make river      - Forzar sincronización de River Plate en el Canal 118"
-	@echo "  make boca       - Forzar sincronización de Boca Juniors en el Canal 118"
-	@echo "  make audit      - Auditar calidad del proveedor en vivo y calcular score"
-	@echo "  make ranking    - Ver tabla histórica y top de proveedores evaluados"
+	@echo "  make up          - Iniciar y aprovisionar el stack (Dispatcharr + Canales + EPG)"
+	@echo "  make down        - Detener el stack limpiamente"
+	@echo "  make restart     - Reiniciar el stack"
+	@echo "  make logs        - Ver logs en vivo de Dispatcharr"
+	@echo "  make status      - Ver estado del contenedor y servicios"
+	@echo "  make provision   - Re-ejecutar aprovisionamiento de canales y EPG"
+	@echo "  make match       - Auto-sincronizar partido de River o Boca en el Canal 118"
+	@echo "  make river       - Forzar sincronización de River Plate en el Canal 118"
+	@echo "  make boca        - Forzar sincronización de Boca Juniors en el Canal 118"
+	@echo "  make validate-ip - Verificar y sincronizar IP local de la Mac en .env"
+	@echo "  make daily-sync  - Ejecutar ciclo diario de sincronización y salud de cuenta"
+	@echo "  make setup-cron  - Instalar tarea programada diaria (cron) en macOS"
+	@echo "  make audit       - Auditar calidad del proveedor en vivo y calcular score"
+	@echo "  make ranking     - Ver tabla histórica y top de proveedores evaluados"
 
 up:
 	@chmod +x scripts/*.sh
@@ -55,7 +58,7 @@ provision:
 		-e BACKUP_PROVIDER_MAX_STREAMS="$$BACKUP_PROVIDER_MAX_STREAMS" \
 		-e EPG_NAME="$$EPG_NAME" \
 		-e EPG_URL="$$EPG_URL" \
-		dispatcharr su - dispatch -c "cd /app && python -" < scripts/provision.py
+		dispatcharr su dispatch -c "cd /app && python -" < scripts/provision.py
 
 audit:
 	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
@@ -68,10 +71,35 @@ ranking:
 	@docker exec -i dispatcharr su - dispatch -c "cd /app && EVAL_MODE=ranking python -" < scripts/evaluate_provider.py
 
 match:
-	@docker exec -i dispatcharr su - dispatch -c "cd /app && python - --team $${TEAM:-auto}" < scripts/sync_match.py
+	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
+	@set -a; . ./.env; set +a; \
+	docker exec -i \
+		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
+		dispatcharr su dispatch -c "cd /app && python - --team $${TEAM:-auto}" < scripts/sync_match.py
 
 river:
-	@docker exec -i dispatcharr su - dispatch -c "cd /app && python - --team river" < scripts/sync_match.py
+	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
+	@set -a; . ./.env; set +a; \
+	docker exec -i \
+		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
+		dispatcharr su dispatch -c "cd /app && python - --team river" < scripts/sync_match.py
 
 boca:
-	@docker exec -i dispatcharr su - dispatch -c "cd /app && python - --team boca" < scripts/sync_match.py
+	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
+	@set -a; . ./.env; set +a; \
+	docker exec -i \
+		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
+		dispatcharr su dispatch -c "cd /app && python - --team boca" < scripts/sync_match.py
+
+validate-ip:
+	@chmod +x scripts/*.sh
+	@./scripts/validate_ip.sh
+
+daily-sync:
+	@chmod +x scripts/*.sh
+	@./scripts/daily_sync.sh
+
+setup-cron:
+	@chmod +x scripts/*.sh
+	@./scripts/setup_cron.sh
+

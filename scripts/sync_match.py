@@ -25,9 +25,16 @@ Channel = apps.get_model('dispatcharr_channels', 'Channel')
 ChannelGroup = apps.get_model('dispatcharr_channels', 'ChannelGroup')
 ChannelStream = apps.get_model('dispatcharr_channels', 'ChannelStream')
 Stream = apps.get_model('dispatcharr_channels', 'Stream')
+from apps.m3u.models import M3UAccount
 
-# Cuenta de Eagle 4K (Proveedor Principal)
-EAGLE_ACCOUNT_ID = 3
+def get_active_account():
+    """Obtiene dinámicamente la cuenta del proveedor primario activo."""
+    prov_user = os.environ.get('PROVIDER_USERNAME')
+    if prov_user:
+        acc = M3UAccount.objects.filter(username=prov_user, is_active=True).first()
+        if acc:
+            return acc
+    return M3UAccount.objects.filter(is_active=True).exclude(name='custom').order_by('id').first()
 
 # Falsos positivos y deportes no relacionados a descartar
 EXCLUDE_PATTERNS = [
@@ -80,6 +87,15 @@ def score_stream(stream, team_filter):
     if 'd+ br' in name or '|br|' in name or 'brasil' in name:
         score -= 40  # Portugués: penalizado severamente frente a cualquier señal en español
         platform = "Disney+ BR (PT)"
+    elif 'arg: espn premium' in name or 'espn premium' in name:
+        score += 75  # ESPN Premium oficial argentino (con Pollo Vignolo)
+        platform = "ESPN Premium HD"
+    elif 'arg: tnt sports' in name or 'tnt sports' in name:
+        score += 70  # TNT Sports oficial argentino
+        platform = "TNT Sports HD"
+    elif name.startswith('arg:') or '|arg|' in name or 'argentina' in name:
+        score += 65  # Señal nacional argentina
+        platform = "Transmisión AR"
     elif 'vix' in name or 'tudn' in name:
         score += 60  # ViX / TUDN en español latino 1080p
         platform = "ViX HD"
@@ -112,10 +128,13 @@ def score_stream(stream, team_filter):
     return (score, matched_team, platform)
 
 def sync_match_channel(team='auto', channel_num=118, dry_run=False):
+    active_acc = get_active_account()
+    acc_name = active_acc.name if active_acc else "Proveedor"
+
     print("=" * 65)
     print(f"⚽ SPORT-VIVO: Sincronización Inteligente de Partidos (Canal {channel_num})")
     print("=" * 65)
-    print(f"🔍 Búsqueda activa para: {team.upper()} (Proveedor: Eagle 4K)")
+    print(f"🔍 Búsqueda activa para: {team.upper()} (Proveedor: {acc_name})")
 
     # Obtener o verificar el grupo 'Eventos Fútbol / Disney+'
     events_group, _ = ChannelGroup.objects.get_or_create(name="Eventos Fútbol / Disney+")
@@ -130,8 +149,13 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
         }
     )
 
-    # Buscar streams candidatos en Eagle 4K
-    candidate_streams = Stream.objects.filter(m3u_account_id=EAGLE_ACCOUNT_ID)
+    print(f"📡 Proveedor Activo: {acc_name}")
+
+    # Buscar streams candidatos en el proveedor activo (o en todos los activos si no se encuentra)
+    if active_acc:
+        candidate_streams = Stream.objects.filter(m3u_account=active_acc)
+    else:
+        candidate_streams = Stream.objects.filter(m3u_account__is_active=True)
     scored_candidates = []
 
     for s in candidate_streams:
@@ -153,7 +177,7 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
         match_search = re.search(r'([A-Za-z0-9\s\.\#]+(?:vs\.?|vs)\s+[A-Za-z0-9\s\.\#]+)', best_stream.name, re.IGNORECASE)
         if match_search:
             clean_name = match_search.group(1).strip()
-            clean_name = re.sub(r'^(D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\))', '', clean_name).strip()
+            clean_name = re.sub(r'^(D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\)|ARG:\s*)', '', clean_name).strip()
             new_channel_name = f"⚽ {clean_name} ({platform})"
         else:
             new_channel_name = f"⚽ {matched_team} ({platform})"
@@ -173,10 +197,18 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
 
     else:
         print("\nℹ️ No se detectaron partidos en vivo de River ni Boca en este momento.")
-        standby_stream = Stream.objects.filter(
-            m3u_account_id=EAGLE_ACCOUNT_ID,
-            name__endswith="Futbol 1"
-        ).first()
+        standby_stream = None
+        if active_acc:
+            standby_stream = Stream.objects.filter(
+                m3u_account=active_acc,
+                name__icontains="ESPN PREMIUM"
+            ).first() or Stream.objects.filter(
+                m3u_account=active_acc,
+                name__icontains="TNT SPORTS"
+            ).first() or Stream.objects.filter(
+                m3u_account=active_acc,
+                name__endswith="Futbol 1"
+            ).first()
 
         new_channel_name = "⚽ Fútbol Argentino (En Espera)"
         if dry_run:
