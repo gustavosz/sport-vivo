@@ -3,9 +3,9 @@
 scripts/sync_match.py
 ---------------------
 Automatización inteligente para Sport-Vivo / Dispatcharr:
-Detecta transmisiones activas de River Plate y Boca Juniors en el proveedor principal (Eagle 4K),
-prioriza señales en español latino (ViX+ / TUDN, Disney+ AR, Prime US, Paramount+ LPF),
-y actualiza el Canal 118 de forma completamente no disruptiva (sin tocar Redis ni streams activos).
+Detecta transmisiones activas de River Plate y Boca Juniors en el proveedor principal,
+prioriza señales en español latino (ViX+ / TUDN, ESPN Premium, TNT Sports, Disney+ AR),
+y actualiza el Canal 17 (ViX en Deportes Argentina) de forma completamente no disruptiva.
 """
 
 import os
@@ -127,7 +127,7 @@ def score_stream(stream, team_filter):
 
     return (score, matched_team, platform)
 
-def sync_match_channel(team='auto', channel_num=118, dry_run=False):
+def sync_match_channel(team='auto', channel_num=17, dry_run=False):
     active_acc = get_active_account()
     acc_name = active_acc.name if active_acc else "Proveedor"
 
@@ -136,15 +136,19 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
     print("=" * 65)
     print(f"🔍 Búsqueda activa para: {team.upper()} (Proveedor: {acc_name})")
 
-    # Obtener o verificar el grupo 'Eventos Fútbol / Disney+'
-    events_group, _ = ChannelGroup.objects.get_or_create(name="Eventos Fútbol / Disney+")
+    # Limpieza proactiva de grupos y canales legacy
+    ChannelGroup.objects.filter(name="Eventos Fútbol / Disney+").delete()
+    Channel.objects.filter(channel_number__gte=100).delete()
+
+    # Obtener el grupo principal 'Deportes Argentina'
+    main_group, _ = ChannelGroup.objects.get_or_create(name="Deportes Argentina")
     
-    # Obtener o crear el canal destino
+    # Obtener o crear el canal destino (Canal 17: ViX)
     channel, ch_created = Channel.objects.get_or_create(
         channel_number=channel_num,
         defaults={
-            "name": "⚽ Fútbol Argentino (En Espera)",
-            "channel_group": events_group,
+            "name": "ViX",
+            "channel_group": main_group,
             "hidden_from_output": False
         }
     )
@@ -187,7 +191,7 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
             return
 
         channel.name = new_channel_name[:50]
-        channel.channel_group = events_group
+        channel.channel_group = main_group
         channel.save()
 
         # Asignar stream único como orden 1
@@ -201,6 +205,9 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
         if active_acc:
             standby_stream = Stream.objects.filter(
                 m3u_account=active_acc,
+                name__icontains="VIX"
+            ).first() or Stream.objects.filter(
+                m3u_account=active_acc,
                 name__icontains="ESPN PREMIUM"
             ).first() or Stream.objects.filter(
                 m3u_account=active_acc,
@@ -210,13 +217,13 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
                 name__endswith="Futbol 1"
             ).first()
 
-        new_channel_name = "⚽ Fútbol Argentino (En Espera)"
+        new_channel_name = "ViX"
         if dry_run:
             print(f"  [DRY-RUN] Canal {channel_num} quedaría en espera: '{new_channel_name}'")
             return
 
         channel.name = new_channel_name
-        channel.channel_group = events_group
+        channel.channel_group = main_group
         channel.save()
 
         if standby_stream:
@@ -231,7 +238,7 @@ def sync_match_channel(team='auto', channel_num=118, dry_run=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Sincronizador inteligente de partidos para Sport-Vivo")
     parser.add_argument('--team', default='auto', choices=['auto', 'river', 'boca'], help="Equipo a buscar")
-    parser.add_argument('--channel', type=int, default=118, help="Número de canal a actualizar (default 118)")
+    parser.add_argument('--channel', type=int, default=17, help="Número de canal a actualizar (default 17)")
     parser.add_argument('--dry-run', action='store_true', help="Solo mostrar el resultado sin modificar la base de datos")
     args = parser.parse_args()
 

@@ -105,11 +105,11 @@ else
     log "ℹ️ 3. Omitiendo descarga M3U porque la cuenta está en estado '$STATUS'."
 fi
 
-# 5. Sincronizar automáticamente partido de River o Boca en Canal 118
-log "⚽ 4. Buscando partidos de Boca Juniors o River Plate para sincronizar en Canal 118..."
+# 5. Sincronizar automáticamente partido de River o Boca en Canal 17 (ViX)
+log "⚽ 4. Buscando partidos de Boca Juniors o River Plate para sincronizar en Canal 17 (ViX)..."
 docker exec -i \
     -e PROVIDER_USERNAME="$PROVIDER_USERNAME" \
-    dispatcharr su dispatch -c "cd /app && python - --team auto --channel 118" < "$ROOT_DIR/scripts/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
+    dispatcharr su dispatch -c "cd /app && python - --team auto --channel 17" < "$ROOT_DIR/scripts/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
 
 log "================================================================="
 log "✅ Sincronización diaria completada con éxito."

@@ -422,6 +422,21 @@ channels_config = [
         "epg_tvg_id": "elgarage.ar",
         "epg_source_type": "trex",
     },
+    {
+        "number": 17,
+        "name": "ViX",
+        "aliases": [
+            "ES: VIX PPV",
+            "MX: VIX PPV",
+            "VIX PPV",
+            "VIX",
+            "ES: VIX",
+            "MX: VIX",
+            "USA: VIX",
+        ],
+        "epg_tvg_id": None,
+        "epg_source_type": None,
+    },
 ]
 
 def find_stream_for_channel(account, aliases):
@@ -471,67 +486,11 @@ for cfg in channels_config:
         print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : ⚠️ Sin stream disponible en el proveedor")
 
 # -----------------------------------------------------------------------------
-# 5b. Grupo Secundario: Eventos Fútbol / Canales Especiales
+# 5b. Limpieza de Grupos Secundarios y Canales Legacy
 # -----------------------------------------------------------------------------
-events_group, _ = ChannelGroup.objects.get_or_create(name="Eventos Fútbol / Disney+")
-print(f"\n✅ Grupo Secundario: '{events_group.name}' listo")
-
-events_channels_config = [
-    {"number": 101, "name": "Liga Profesional 1", "aliases": ["Liga Profesional De Futbol 1", "ARG: LIGA PROFESIONAL 1", "LPF 1"]},
-    {"number": 102, "name": "Liga Profesional 2", "aliases": ["Liga Profesional De Futbol 2", "ARG: LIGA PROFESIONAL 2", "LPF 2"]},
-    {"number": 103, "name": "Liga Profesional 3", "aliases": ["Liga Profesional De Futbol 3", "ARG: LIGA PROFESIONAL 3", "LPF 3"]},
-    {"number": 104, "name": "Liga Profesional 4", "aliases": ["Liga Profesional De Futbol 4", "ARG: LIGA PROFESIONAL 4", "LPF 4"]},
-    {"number": 105, "name": "Liga Profesional 5", "aliases": ["Liga Profesional De Futbol 5", "ARG: LIGA PROFESIONAL 5", "LPF 5"]},
-    {"number": 106, "name": "Liga Profesional 6", "aliases": ["Liga Profesional De Futbol 6", "ARG: LIGA PROFESIONAL 6", "LPF 6"]},
-    {"number": 107, "name": "Liga Profesional 7", "aliases": ["Liga Profesional De Futbol 7", "ARG: LIGA PROFESIONAL 7", "LPF 7"]},
-    {"number": 108, "name": "Liga Profesional 8", "aliases": ["Liga Profesional De Futbol 8", "ARG: LIGA PROFESIONAL 8", "LPF 8"]},
-    {"number": 109, "name": "Liga Profesional 9", "aliases": ["Liga Profesional De Futbol 9", "ARG: LIGA PROFESIONAL 9", "LPF 9"]},
-    {"number": 110, "name": "Liga Profesional 10", "aliases": ["Liga Profesional De Futbol 10", "ARG: LIGA PROFESIONAL 10", "LPF 10"]},
-    {"number": 111, "name": "TyC Sports Internacional", "aliases": ["TYC SPORTS INTERNACIONAL", "TYC SPORTS INT"]},
-    {"number": 112, "name": "Fox Sports Premium (FS)", "aliases": ["FOX SPORTS PREMIUM", "ARG: FOX SPORTS PREMIUM"]},
-    {"number": 113, "name": "Evento Fútbol 1", "aliases": ["D+ AR 001", "ARG: EVENTO 1", "EVENT 1"]},
-    {"number": 114, "name": "Evento Fútbol 2", "aliases": ["D+ AR 002", "ARG: EVENTO 2", "EVENT 2"]},
-    {"number": 115, "name": "Evento Fútbol 3", "aliases": ["D+ AR 003", "ARG: EVENTO 3", "EVENT 3"]},
-    {"number": 116, "name": "Evento Fútbol 4", "aliases": ["D+ AR 004", "ARG: EVENTO 4", "EVENT 4"]},
-    {"number": 117, "name": "Evento Fútbol 5", "aliases": ["D+ AR 005", "ARG: EVENTO 5", "EVENT 5"]},
-    {"number": 118, "name": "River / Boca - Partido en Vivo", "aliases": ["Liga Profesional De Futbol 1", "ARG: ESPN PREMIUM", "ARG: TNT SPORTS"]},
-    {"number": 119, "name": "ESPN F90", "aliases": ["ESPN F90 Argentina", "F90"]},
-    {"number": 120, "name": "ESPN F360", "aliases": ["ESPN F360", "F360"]},
-]
-
-print("\n--- Sincronizando Canales de Eventos Fútbol & Secundarios ---")
-for cfg in events_channels_config:
-    channel, ch_created = Channel.objects.get_or_create(
-        channel_number=cfg["number"],
-        defaults={
-            "name": cfg["name"],
-            "channel_group": events_group,
-            "stream_profile": stream_profile_fast,
-            "hidden_from_output": False
-        }
-    )
-    if not ch_created:
-        channel.name = cfg["name"]
-        channel.channel_group = events_group
-        channel.stream_profile = stream_profile_fast
-        channel.hidden_from_output = False
-        channel.save()
-
-    resolved_stream = find_stream_for_channel(provider_primary, cfg.get("aliases", []))
-    if not resolved_stream and provider_backup:
-        resolved_stream = find_stream_for_channel(provider_backup, cfg.get("aliases", []))
-
-    ChannelStream.objects.filter(channel=channel).delete()
-    if resolved_stream:
-        ChannelStream.objects.create(
-            channel=channel,
-            stream=resolved_stream,
-            order=1
-        )
-        acc_name = resolved_stream.m3u_account.name[:10] if resolved_stream.m3u_account else "Unknown"
-        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : [Stream 1] [{acc_name}] {resolved_stream.name}")
-    else:
-        print(f"  [Ch {int(channel.channel_number):03d}] {channel.name:<25} : ⚠️ Sin stream disponible en el proveedor")
+ChannelGroup.objects.filter(name="Eventos Fútbol / Disney+").delete()
+Channel.objects.filter(channel_number__gte=100).delete()
+print("\n🧹 Grupo secundario 'Eventos Fútbol / Disney+' y canales 100+ eliminados.")
 
 # -----------------------------------------------------------------------------
 # 5c. Logotipos Oficiales Transparentes en Alta Definición
@@ -554,6 +513,7 @@ channel_logos = {
     14: ("TV Pública", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/television-publica-ar.png"),
     15: ("DeporTV", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/deportv-ar.png"),
     16: ("El Garage TV", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/el-garage-tv-ar.png"),
+    17: ("ViX", "https://upload.wikimedia.org/wikipedia/commons/f/f0/ViX_Logo.png"),
 }
 
 for ch_num, (logo_title, logo_url) in channel_logos.items():
