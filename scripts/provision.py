@@ -203,14 +203,14 @@ stream_profile_fast, _ = StreamProfile.objects.get_or_create(
     name="ffmpeg-fast-failover",
     defaults={
         "command": "ffmpeg",
-        "parameters": "-user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1",
+        "parameters": "-fflags +genpts+discardcorrupt -user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1",
         "locked": False,
         "is_active": True,
         "user_agent_id": 1,
     }
 )
 stream_profile_fast.command = "ffmpeg"
-stream_profile_fast.parameters = "-user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1"
+stream_profile_fast.parameters = "-fflags +genpts+discardcorrupt -user_agent {userAgent} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 1000000 -rw_timeout 15000000 -i {streamUrl} -c copy -f mpegts pipe:1"
 stream_profile_fast.save()
 
 # Establecer buffering_speed a 0.1 (evita falsos positivos en streams con jitter) y buffering_timeout a 30s

@@ -69,13 +69,24 @@ def score_stream(stream, team_filter):
         if re.search(exc, name):
             return -1
 
+    # Descartar eventos con fecha explícita que no sea la de hoy
+    now = datetime.now()
+    today_ymd = now.strftime('%Y-%m-%d')
+    today_dmy = now.strftime('%d-%m-%Y')
+    m_ymd = re.search(r'(\d{4}-\d{2}-\d{2})', name)
+    if m_ymd and m_ymd.group(1) != today_ymd:
+        return -1
+    m_dmy = re.search(r'(\d{2}-\d{2}-\d{4})', name)
+    if m_dmy and m_dmy.group(1) != today_dmy:
+        return -1
+
     # 2. Verificar correspondencia con el equipo buscado
     matched_team = None
     if team_filter in ['river', 'auto']:
         if re.search(r'\briver\s+plate\b', name) or re.search(r'(?<!blind\s)(?<!french\s)\briver\s+vs\b', name) or re.search(r'\bvs\.?\s+river\b', name):
             matched_team = 'River Plate'
     if not matched_team and team_filter in ['boca', 'auto']:
-        if re.search(r'\bboca\s+juniors\b', name) or re.search(r'\bboca\s+vs\b', name) or re.search(r'\bvs\.?\s+boca\b', name):
+        if re.search(r'\bboca\s+juniors\b', name) or re.search(r'\bboca\s+vs\b', name) or re.search(r'\bvs\.?\s+boca\b', name) or re.search(r'\bvasco\s+x\s+boca\b', name):
             matched_team = 'Boca Juniors'
             
     if not matched_team:
@@ -84,9 +95,9 @@ def score_stream(stream, team_filter):
     score = 50  # Puntaje base
 
     # 3. Ponderación por plataforma e idioma
-    if 'd+ br' in name or '|br|' in name or 'brasil' in name:
-        score -= 40  # Portugués: penalizado severamente frente a cualquier señal en español
-        platform = "Disney+ BR (PT)"
+    if 'd+ br' in name or '|br|' in name or 'brasil' in name or 'br:' in name:
+        score -= 40  # Portugués: penalizado frente a cualquier señal en español
+        platform = "BR (PT)"
     elif 'arg: espn premium' in name or 'espn premium' in name:
         score += 75  # ESPN Premium oficial argentino (con Pollo Vignolo)
         platform = "ESPN Premium HD"
@@ -102,6 +113,9 @@ def score_stream(stream, team_filter):
     elif 'd+ ar' in name or 'disney+ ar' in name or 'espn' in name:
         score += 55  # Disney+ Argentina / ESPN
         platform = "Disney+ AR"
+    elif 'us: soccer ppv' in name or 'soccer ppv' in name:
+        score += 52  # Soccer PPV internacional
+        platform = "Soccer PPV"
     elif 'd+ cl' in name or 'd+ sur' in name or 'd+ lam' in name:
         score += 50  # Disney+ Cono Sur
         platform = "Disney+ Sur"
@@ -115,13 +129,12 @@ def score_stream(stream, team_filter):
         platform = "Feed Deportes"
 
     # 4. Bonificación si coincide con la fecha de hoy
-    now = datetime.now()
-    today_str = now.strftime('%Y-%m-%d')
     today_short = now.strftime('%b %d').lower()
-    if today_str in name or today_short in name:
+    today_d_b = now.strftime('%d %b').lower()
+    if today_ymd in name or today_dmy in name or today_short in name or today_d_b in name:
         score += 30
 
-    # 5. Bonificación si menciona torneos oficiales argentinos
+    # 5. Bonificación si menciona torneos oficiales argentinos o Conmebol
     if any(t in name for t in ['liga profesional', 'torneo', 'clausura', 'apertura', 'copa argentina', 'libertadores', 'sudamericana', 'lpf']):
         score += 15
 
@@ -178,10 +191,12 @@ def sync_match_channel(team='auto', channel_num=17, dry_run=False):
         print(f"  → Stream ID   : {best_stream.id}")
         
         # Generar nombre limpio para el canal
-        match_search = re.search(r'([A-Za-z0-9\s\.\#]+(?:vs\.?|vs)\s+[A-Za-z0-9\s\.\#]+)', best_stream.name, re.IGNORECASE)
+        match_search = re.search(r'([A-Za-z0-9\s\.\#]+(?:vs\.?|vs|x)\s+[A-Za-z0-9\s\.\#]+)', best_stream.name, re.IGNORECASE)
         if match_search:
             clean_name = match_search.group(1).strip()
-            clean_name = re.sub(r'^(D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\)|ARG:\s*)', '', clean_name).strip()
+            clean_name = re.sub(r'^(NEXT\s*\|\s*|LIVE\s*\|\s*|D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\)|ARG:\s*)', '', clean_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'\bCR\s+', '', clean_name, flags=re.IGNORECASE)
+            clean_name = re.sub(r'\bCA\s+', '', clean_name, flags=re.IGNORECASE)
             new_channel_name = f"⚽ {clean_name} ({platform})"
         else:
             new_channel_name = f"⚽ {matched_team} ({platform})"
