@@ -85,12 +85,38 @@ CYCLE_INTERVAL_SEC = 8                 # Intervalo de chequeo de streams activos
 MATCH_SYNC_INTERVAL_SEC = 300          # Auto-sincronización de partidos (5 min)
 LIVE_LOG_INTERVAL_SEC = 300            # Frecuencia del log informativo por canal en vivo
 
-# Canales con señal fija: solo se aceptan variantes argentinas de la misma señal.
-FIXED_SIGNAL_CHANNELS = {
-    1: 'espn premium',
-    2: 'tnt sports',
-}
+# Canales con señal fija: solo se aceptan variantes argentinas de exactamente la misma señal.
 _ARG_TOKEN = re.compile(r'(^|[^a-z])arg([^a-z]|$)', re.IGNORECASE)
+FIXED_SIGNAL_CHANNELS = {
+    1: ('espn premium', re.compile(r'\bespn\s+premium\b', re.IGNORECASE)),
+    2: ('tnt sports', re.compile(r'\btnt\s+sports?\b', re.IGNORECASE)),
+    3: ('tyc sports', re.compile(r'\btyc\s+sports?\b', re.IGNORECASE)),
+    4: ('fox sports 1', re.compile(r'\bfox\s+sports?\s*1\b', re.IGNORECASE)),
+    5: ('fox sports 2', re.compile(r'\bfox\s+sports?\s*2\b', re.IGNORECASE)),
+    6: ('fox sports 3', re.compile(r'\bfox\s+sports?\s*3\b', re.IGNORECASE)),
+    7: ('espn', re.compile(r'\bespn\b(?!\s*(?:2|3|4|5|6|7|plus|\+|extra|premium))', re.IGNORECASE)),
+    8: ('espn 2', re.compile(r'\bespn\s*2\b', re.IGNORECASE)),
+    9: ('espn 3', re.compile(r'\bespn\s*3\b', re.IGNORECASE)),
+    10: ('espn extra', re.compile(r'\bespn\s*(?:extra|\+|plus)\b', re.IGNORECASE)),
+    11: ('dtv', re.compile(r'\b(?:dtv|direct\s*tv\s*sports|directv\s*sports|dsports)\b(?!\s*(?:2|plus|\+))', re.IGNORECASE)),
+    12: ('directv sports 2', re.compile(r'\b(?:dtv\s*2|direct\s*tv\s*sports\s*2|directv\s*sports\s*2|dsports\s*2)\b', re.IGNORECASE)),
+    13: ('directv sports', re.compile(r'\b(?:dtv\s*plus|direct\s*tv\s*sports\s*plus|directv\s*sports\s*(?:plus|hd)|dsports\s*\+)\b', re.IGNORECASE)),
+    14: ('tv publica', re.compile(r'\b(?:tv|television)\s+publica\b', re.IGNORECASE)),
+    15: ('deportv', re.compile(r'\bdeportv\b', re.IGNORECASE)),
+    16: ('garage', re.compile(r'\bgarage\b', re.IGNORECASE)),
+}
+
+
+def matches_fixed_signal(ch_num, stream_name):
+    """
+    True si stream_name es una variante argentina de exactamente la misma señal fija
+    del canal ch_num (ej. evita que Canal 7 'ESPN' coincida con 'ESPN 2' o 'ESPN Premium').
+    """
+    spec = FIXED_SIGNAL_CHANNELS.get(ch_num)
+    if not spec or not stream_name:
+        return False
+    _, pattern = spec
+    return bool(_ARG_TOKEN.search(stream_name) and pattern.search(stream_name))
 
 
 class SportVivoDaemon:
@@ -297,10 +323,11 @@ class SportVivoDaemon:
             return None
 
         if ch_num in FIXED_SIGNAL_CHANNELS:
+            keyword, _ = FIXED_SIGNAL_CHANNELS[ch_num]
             qs = sm.Stream.objects.filter(
-                m3u_account=account, name__icontains=FIXED_SIGNAL_CHANNELS[ch_num]
+                m3u_account=account, name__icontains=keyword
             ).exclude(id=current_stream_id).order_by('id')
-            return self._pick_healthy([s for s in qs if _ARG_TOKEN.search(s.name)])
+            return self._pick_healthy([s for s in qs if matches_fixed_signal(ch_num, s.name)])
 
         if ch_num in sm.EVENT_CHANNELS:
             pool = [c for c in sm.find_candidates(account) if sm.channel_accepts(ch_num, c[3].name)]

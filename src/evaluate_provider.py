@@ -233,8 +233,9 @@ def calculate_quality_score(telemetry, benchmark_results):
         score_bitrate = 0
 
     # 4. Latencia de arranque / TTFB (20 pts)
-    if ok_results:
-        avg_ttfb = sum(r["ttfb_ms"] for r in ok_results if r.get("ttfb_ms")) / len(ok_results)
+    ttfb_values = [r["ttfb_ms"] for r in ok_results if r.get("ttfb_ms") is not None]
+    if ttfb_values:
+        avg_ttfb = sum(ttfb_values) / len(ttfb_values)
     else:
         avg_ttfb = 9999.0
 
@@ -325,8 +326,33 @@ def render_ranking_table(history):
     print("=" * 104 + "\n")
 
 
+def has_active_viewers(redis_client=None):
+    """
+    Devuelve True si hay algún cliente conectado a un canal en vivo en Redis.
+    Evita que 'make audit' robe la única conexión disponible (max_streams=1) mientras alguien mira TV.
+    """
+    try:
+        if redis_client is None:
+            from core.utils import RedisClient
+            redis_client = RedisClient.get_client()
+        if not redis_client:
+            return False
+        for key in redis_client.keys("live:channel:*:clients"):
+            if (redis_client.scard(key) or 0) > 0:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def run_audit():
     """Ejecuta la auditoría en vivo y el cálculo del score."""
+    if has_active_viewers() and os.environ.get("FORCE_AUDIT") != "1":
+        print("\n⚠️  Auditoría en vivo cancelada: hay un cliente reproduciendo un canal en este momento.")
+        print("   Ejecutar el benchmark ahora robaría la única conexión disponible (max_streams=1).")
+        print("   Detén la reproducción o usa FORCE_AUDIT=1 si deseas forzar la prueba.\n")
+        return
+
     provider = None
     if PROVIDER_USERNAME:
         provider = M3UAccount.objects.filter(username=PROVIDER_USERNAME).first()

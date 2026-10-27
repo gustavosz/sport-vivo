@@ -56,23 +56,28 @@ flowchart TD
 
 ---
 
-## 📺 Canales Curados y Mapeo de Failover
+## 📺 Canales Curados y Mapeo de Señales
 
-| Nº | Canal | Señal Principal (P1 - Eagle 4K) | Señal Backup (P2 - Trex OTT) | EPG (tvg-id) |
+| Nº | Canal | Señal Principal (World 8K / Trex OTT) | Modo / Respaldo | EPG (`tvg-id`) |
 | :---: | :--- | :--- | :--- | :--- |
-| **01** | **ESPN Premium** | \|ARG\| FOX SPORTS PREMIUM ᴴᴰ | ARG: ESPN PREMIUM RAW | `a1ty` |
-| **02** | **TNT Sports** | \|ARG\| TNT SPORT | ARG: TNT SPORTS RAW | `a1sm` |
-| **03** | **TyC Sports** | \|ARG\| TYC SPORTS ᴬᴿᴳᴱᴺᵀᴵᴺᴬ ᴴᴰ | ARG: TYC SPORTS RAW | `a1sk` |
-| **04** | **Fox Sports 1** | \|ARG\| FOX SPORTS 1 ᴴᴰ | ARG: FOX SPORTS 1 RAW | `a1tx` |
-| **05** | **Fox Sports 2** | \|ARG\| FOX SPORTS 2 ᴴᴰ | ARG: FOX SPORTS 2 RAW | `a1r3` |
-| **06** | **Fox Sports 3** | \|ARG\| FOX SPORT 3 | ARG: FOX SPORTS 3 RAW | `a1sl` |
-| **07** | **ESPN** | \|ARG\| ESPN | ARG: ESPN RAW | `a1jl` |
-| **08** | **ESPN 2** | \|ARG\| ESPN 2 | ARG: ESPN 2 RAW | `a1jc` |
-| **09** | **ESPN 3** | \|PER\| ESPN 3 | ARG: ESPN 3 RAW | `a1kf` |
-| **10** | **ESPN Extra** | \|ARG\| ESPN+ | ARG: ESPN EXTRA RAW | `a1j1` |
-| **11** | **DSports (DirecTV 1)** | \|ARG\| DIRECT TV SPORTS | ARG: DTV RAW | — |
-| **12** | **DSports 2** | \|ARG\| DIRECT TV SPORTS 2 | CO: DIRECTV SPORTS 2 | — |
-| **13** | **DSports+ / DTV** | \|ARG\| DIRECT TV SPORTS PLUS | ARG: DTV RAW | — |
+| **01** | **ESPN Premium** | `ARG: ESPN PREMIUM RAW` | Daemon Watchdog (Señal Fija AR) | `espn.premium.argentina.latam` |
+| **02** | **TNT Sports** | `ARG: TNT SPORTS RAW` | Daemon Hot-Failover (`VO: TNT SPORTS ARG HD`) | `tntsports.ar` |
+| **03** | **TyC Sports** | `ARG: TYC SPORTS RAW` (145642) | Daemon Hot-Failover (`ARG: TYC SPORTS RAW` 145620) | `tyc.sports.argentina.latam` |
+| **04** | **Fox Sports 1** | `ARG: FOX SPORTS 1 RAW` | Daemon Watchdog | `foxsports.ar` |
+| **05** | **Fox Sports 2** | `ARG: FOX SPORTS 2 RAW` | Daemon Watchdog | `foxsports2.ar` |
+| **06** | **Fox Sports 3** | `ARG: FOX SPORTS 3 RAW` | Daemon Watchdog | `foxsports3.ar` |
+| **07** | **ESPN** | `ARG: ESPN RAW` | Daemon Watchdog | `espn.sur.latam` |
+| **08** | **ESPN 2** | `ARG: ESPN 2 RAW` | Daemon Watchdog | `espn.2.sur.latam` |
+| **09** | **ESPN 3** | `ARG: ESPN 3 RAW` | Daemon Watchdog | `espn.3.sur.latam` |
+| **10** | **ESPN Extra** | `ARG: ESPN EXTRA RAW` | Daemon Watchdog | `espn.4.sur.latam` |
+| **11** | **DSports (DirecTV 1)** | `ARG: DTV RAW` | Daemon Watchdog | `DSPORTS \| AR` |
+| **12** | **DSports 2** | `CO: DIRECTV SPORTS 2` | Daemon Watchdog | `DSPORTS 2 \| ARGENTINA` |
+| **13** | **DSports+ / DTV** | `RC: DIRECTV SPORTS HD` | Daemon Watchdog | `dsports.plus.latam` |
+| **14** | **TV Pública** | `ARG: TV PUBLICA RAW` | Daemon Watchdog | `tvpublica.ar` |
+| **15** | **DeporTV** | `ARG: DEPORTV` / `ARG: GOL TV RAW` | Daemon Watchdog | — |
+| **16** | **El Garage TV** | `ARG: GARAGE TV RAW` | Daemon Watchdog | `elgarage.ar` |
+| **17** | **AFA Play (Fanatiz / Liga Arg)** | Dinámico (`ARG: FANATIZ PPV`) | Auto-Sync Partidos River/Boca + Standby PPV 1 | — |
+| **18** | **ViX PPV / Internacional** | Dinámico (`ES: VIX PPV` / `ESPN+`) | Auto-Sync Partidos River/Boca + Standby PPV 1 | — |
 
 ---
 

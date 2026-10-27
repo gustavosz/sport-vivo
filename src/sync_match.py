@@ -53,11 +53,19 @@ EVENT_GROUP_NAME = "Deportes Argentina"
 AFA_CHANNEL = 17
 INTL_CHANNEL = 18
 EVENT_CHANNELS = {
-    AFA_CHANNEL: {"label": "AFA Play", "standby_name": "AFA Play (Fanatiz / Liga Arg)"},
-    INTL_CHANNEL: {"label": "Internacional", "standby_name": "ViX PPV / Internacional"},
+    AFA_CHANNEL: {
+        "label": "AFA Play",
+        "standby_name": "AFA Play (Fanatiz / Liga Arg)",
+        "standby_aliases": ("ARG: FANATIZ PPV 1", "ARG: FANATIZ PPV", "Fanatiz"),
+    },
+    INTL_CHANNEL: {
+        "label": "Internacional",
+        "standby_name": "ViX PPV / Internacional",
+        "standby_aliases": ("ES: VIX PPV 1", "MX: VIX PPV 1", "ES: VIX PPV", "MX: VIX PPV", "VIX PPV"),
+    },
 }
 
-# Falsos positivos, placeholders y deportes no relacionados a descartar
+# Falsos positivos, divisiones juveniles, placeholders y deportes no relacionados a descartar
 EXCLUDE_PATTERNS = [
     r'^end(ed)?\s*\|',         # Eventos ya finalizados
     r'\bended\b',
@@ -65,12 +73,22 @@ EXCLUDE_PATTERNS = [
     r'hockey',                 # Hockey
     r'volleyball', r'voley',   # Vóley
     r'baseball', r'milb',      # Béisbol
-    r'driver tracker', r'formula 1', r'\bf1\b', # Automovilismo
-    r'ncaa',                   # Deportes universitarios de EE.UU.
+    r'driver tracker', r'formula 1', r'\bf1\b',  # Automovilismo
+    r'ncaa', r'\bnfhs\b', r'\bflsp\b',           # Deportes universitarios y colegiales EE.UU.
+    r'\bu1[5-9]\b', r'\bu2[0-3]\b',              # Torneos juveniles (Sub-16 Messi Cup, Sub-20, etc.)
+    r'\bsub-?1[5-9]\b', r'\bsub-?2[0-3]\b',
+    r'\byouth\b', r'\bjuvenil', r'\breserva\b',
+    r'\b(se|dk|no|fi):\s*', r'teliaplay',        # Feeds nórdicos (no hablantes de español/inglés)
+    r'us\s*\(\s*espn\+\s*\d+\)\s*\|\s*soccer:',  # ESPN+ US genérico (NCAA / Copa del Rey / Messi Cup U16; ESPN+ no tiene derechos de LPF ni Libertadores)
+    r'\bajax\b', r'cornell[aà]', r'inter milan', # Rivales europeos de torneos amistosos juveniles (Messi Cup U16)
     r'river monsters',         # Serie de TV
+    r'virgin river', r'riverdale',
     r'uc riverside', r'riverside',
     r'riverhead',
     r'blind river', r'french river',
+    r'boston river',           # Club uruguayo (Boston River)
+    r'toms river',             # Secundaria EE.UU. (Toms River East/North/South)
+    r'campbell river', r'quesnel river', r'langley rivermen', r'river rush',
     r'riverton',
     r'river plate uruguay',    # Homónimos extranjeros
     r'river plate zambia',
@@ -80,6 +98,12 @@ EXCLUDE_PATTERNS = [
     r't\u00e9l\u00e9 bocal',   # Canal francés
     r'gem river',              # Canal persa
 ]
+
+_SOUTH_AMERICA_CONTEXT = (
+    'arg', 'fanatiz', 'afa', 'lpf', 'liga profesional', 'copa argentina',
+    'libertadores', 'sudamericana', 'espn', 'tnt', 'tyc', 'vix', 'tudn',
+    'd+ ar', 'd+ sur', 'd+ cl', 'd+ lam', 'paramount',
+)
 
 _MONTH_RE = (r'(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|'
              r'aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)')
@@ -189,10 +213,18 @@ def score_stream(stream, team_filter='auto'):
     # 2. Verificar correspondencia con el equipo buscado
     matched_team = None
     if team_filter in ['river', 'auto']:
-        if re.search(r'\briver\s+plate\b', name) or re.search(r'(?<!blind\s)(?<!french\s)\briver\s+vs\b', name) or re.search(r'\bvs\.?\s+river\b', name):
+        if re.search(r'\briver\s+plate\b', name):
+            matched_team = 'River Plate'
+        elif (
+            re.search(r'(?<!blind\s)(?<!french\s)\briver\s+vs\b', name)
+            or re.search(r'\bvs\.?\s+river\b', name)
+        ) and any(ctx in name for ctx in _SOUTH_AMERICA_CONTEXT):
             matched_team = 'River Plate'
     if not matched_team and team_filter in ['boca', 'auto']:
-        if re.search(r'\bboca\s+juniors\b', name) or re.search(r'\bboca\s+vs\b', name) or re.search(r'\bvs\.?\s+boca\b', name) or re.search(r'\bvasco\s+x\s+boca\b', name):
+        if re.search(r'\bboca\s+juniors\b', name) or (
+            (re.search(r'\bboca\s+vs\b', name) or re.search(r'\bvs\.?\s+boca\b', name) or re.search(r'\bvasco\s+x\s+boca\b', name))
+            and any(ctx in name for ctx in _SOUTH_AMERICA_CONTEXT)
+        ):
             matched_team = 'Boca Juniors'
 
     if not matched_team:
@@ -279,11 +311,14 @@ def clean_channel_name(stream_name, matched_team, platform):
     """Genera un nombre de canal legible a partir del nombre crudo del stream."""
     clean = re.sub(r'^(NEXT\s*\|\s*|LIVE\s*\|\s*|ENDED\s*\|\s*)', '', stream_name, flags=re.IGNORECASE).strip()
     match_part = clean.split('|')[0].strip()
-    # Formato "(Fanatiz 087) | Boca vs ...": el partido está en el segundo segmento
-    if re.match(r'^\(.*\)$', match_part) and '|' in clean:
+    # Formato "(Fanatiz 087) | Boca vs ..." o "US (ESPN+ 118) | Soccer: River vs ...": el partido está en el 2do segmento
+    if (re.match(r'^\(.*\)$', match_part) or re.match(r'^[A-Z]{2,3}\s*\([^)]+\)$', match_part, flags=re.IGNORECASE)) and '|' in clean:
         match_part = clean.split('|')[1].strip()
     match_part = re.sub(r'\(\d{4}-\d{2}-\d{2}[^)]*\)', '', match_part)
-    match_part = re.sub(r'^(D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\)|ARG:\s*)', '', match_part, flags=re.IGNORECASE).strip()
+    match_part = re.sub(r'^(D\+\s*\w+\s*\d*\||PRIME\s*\w+\s*\d*\||US\s*\([^\)]+\)\s*\|?\s*|ARG:\s*)', '', match_part, flags=re.IGNORECASE).strip()
+    match_part = re.sub(r'^(soccer|f[uú]tbol|football)\s*:\s*', '', match_part, flags=re.IGNORECASE).strip()
+    # Eliminar paréntesis final redundante con el mismo cruce "(River Plate vs. Racing)"
+    match_part = re.sub(r'\s*\([^)]*(?:\bvs\.?\b|\bx\b)[^)]*\)\s*$', '', match_part, flags=re.IGNORECASE)
     match_part = re.sub(r'\b(CLUB\s+ATL[EÉ]TICO|ATL[EÉ]TICO|CLUB)\s+', '', match_part, flags=re.IGNORECASE)
     match_part = re.sub(r'\b(CA|CR)\s+', '', match_part, flags=re.IGNORECASE)
     match_part = re.sub(r'\s+', ' ', match_part).strip()
@@ -302,10 +337,25 @@ def pick_for_channel(candidates, channel_num):
     return None
 
 
+def resolve_standby_stream(account, channel_num):
+    """
+    Obtiene el stream base (PPV 1) del proveedor activo para cuando el canal de eventos
+    entra en modo espera (sin partido de River/Boca hoy), evitando dejar enganchado un
+    stream viejo o de otro evento.
+    """
+    if not account or channel_num not in EVENT_CHANNELS:
+        return None
+    for alias in EVENT_CHANNELS[channel_num].get("standby_aliases", ()):
+        s = Stream.objects.filter(m3u_account=account, name__icontains=alias).order_by('id').first()
+        if s:
+            return s
+    return None
+
+
 def apply_channel(channel_num, stream, name, dry_run=False, log=print):
     """
     Aplica stream + nombre al canal SOLO si algo cambió. Devuelve True si hubo cambios.
-    Si stream es None (modo espera), conserva el stream actual y solo ajusta el nombre.
+    Si stream es None (y no hay standby_stream disponible), solo ajusta el nombre.
     """
     group, _ = ChannelGroup.objects.get_or_create(name=EVENT_GROUP_NAME)
     channel, _ = Channel.objects.get_or_create(
@@ -355,9 +405,11 @@ def sync_event_channels(team='auto', channels=(AFA_CHANNEL, INTL_CHANNEL), dry_r
                 state = "actualizado" if changed else "sin cambios"
                 log(f"✅ Canal {ch} ({cfg['label']}) {state}: [{score} pts] [{platform}] {stream.name} (Stream {stream.id})")
         else:
-            changed = apply_channel(ch, None, cfg['standby_name'], dry_run, log)
+            standby_stream = resolve_standby_stream(account, ch)
+            changed = apply_channel(ch, standby_stream, cfg['standby_name'], dry_run, log)
             if changed or verbose:
-                log(f"ℹ️ Canal {ch} ({cfg['label']}) en espera: no hay partidos de River/Boca para hoy en esta plataforma.")
+                extra = f" -> Standby [{standby_stream.id}] {standby_stream.name}" if standby_stream else ""
+                log(f"ℹ️ Canal {ch} ({cfg['label']}) en espera: no hay partidos de River/Boca para hoy en esta plataforma.{extra}")
         results[ch] = (pick, changed)
 
     return results

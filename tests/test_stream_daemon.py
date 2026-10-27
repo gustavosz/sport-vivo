@@ -46,6 +46,27 @@ class TestStreamDaemonHelpers(unittest.TestCase):
         self.assertIsNone(sd._ARG_TOKEN.search("US: TNT SPORTS BOX OFFICE"))
         self.assertIsNone(sd._ARG_TOKEN.search("CANAL LARGO HD"))
 
+    def test_matches_fixed_signal_prevents_cross_channel_contamination(self):
+        # Canal 1: ESPN Premium
+        self.assertTrue(sd.matches_fixed_signal(1, "ARG: ESPN PREMIUM ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(1, "ARG: ESPN ᴿᴬᵂ"))
+
+        # Canal 2: TNT Sports (solo Argentina)
+        self.assertTrue(sd.matches_fixed_signal(2, "ARG: TNT SPORTS ᴿᴬᵂ"))
+        self.assertTrue(sd.matches_fixed_signal(2, "VO: TNT SPORTS ARG ᴴᴰ"))
+        self.assertFalse(sd.matches_fixed_signal(2, "UK: TNT SPORTS 1 HD"))
+
+        # Canal 3: TyC Sports (ambas señales ARG en el catálogo)
+        self.assertTrue(sd.matches_fixed_signal(3, "ARG: TYC SPORTS ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(3, "US: TYC SPORTS INTL"))
+
+        # Canal 7: ESPN base NO debe coincidir con ESPN 2, 3, Extra ni Premium
+        self.assertTrue(sd.matches_fixed_signal(7, "ARG: ESPN ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(7, "ARG: ESPN 2 ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(7, "ARG: ESPN 3 ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(7, "ARG: ESPN EXTRA ᴿᴬᵂ"))
+        self.assertFalse(sd.matches_fixed_signal(7, "ARG: ESPN PREMIUM ᴿᴬᵂ"))
+
     def test_pick_healthy_skips_dead_streams_and_prefers_verified(self):
         dead = SimpleNamespace(id=10, name="VO: TNT SPORTS ARG", stream_stats={"ffmpeg_output_bitrate": 195.0})
         unknown = SimpleNamespace(id=20, name="ARG: TNT BACKUP", stream_stats={})

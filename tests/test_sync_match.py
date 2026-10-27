@@ -75,10 +75,40 @@ class TestSyncMatchFiltersAndScoring(unittest.TestCase):
             "NCAA: UC Riverside vs UCLA",
             "Hockey: River Plate vs GEBA",
             "Baseball: Boca Chica vs Santo Domingo",
+            "UY: Boston River vs Nacional | Campeonato Uruguayo",
+            "NFHS | Toms River East vs Brick Memorial",
+            "Campbell River Storm vs Victoria Cougars",
+            "Langley Rivermen vs Alberni Valley",
+            "River vs Tigers (High School Football)",
         ]
         for name in invalid_names:
             with self.subTest(name=name):
                 self.assertIsNone(sm.score_stream(make_stream(name)))
+
+    def test_excludes_u16_messi_cup_and_nordic_feeds(self):
+        invalid_youth_and_nordic = [
+            "TeliaPlay SE 44: River Plate U16 vs Ajax U16",
+            "TeliaPlay SE 37: Boca Juniors U16 vs UE Cornella U16",
+            "SE: DISNEY+ | Boca Juniors vs. Flamengo | Oct 26",
+            "DK: DISNEY+ | River Plate vs. Inter Milan | Oct 27",
+            "US (ESPN+ 118) | Soccer: River Plate vs. Inter Milan (River Plate vs. Inter Milan)",
+            "US (ESPN+ 099) | Soccer: Boca Juniors vs. Flamengo (Boca Juniors vs. Flamengo) (2026-10-27 13:25:00)",
+            "US (ESPN+ 015) | Soccer: Boca Juniors vs. UE Cornellà",
+            "ARG: Sub-20 River Plate vs Racing",
+            "Torneo Proyección Reserva: Boca Juniors vs Lanús",
+        ]
+        for name in invalid_youth_and_nordic:
+            with self.subTest(name=name):
+                self.assertIsNone(sm.score_stream(make_stream(name)))
+
+    def test_accepts_short_river_or_boca_when_south_american_context_present(self):
+        res_river = sm.score_stream(make_stream("ARG: FANATIZ PPV 1 | River vs Racing Club"))
+        self.assertIsNotNone(res_river)
+        self.assertEqual(res_river[1], "River Plate")
+
+        res_boca = sm.score_stream(make_stream("ARG: FANATIZ PPV 2 | Boca vs Lanús"))
+        self.assertIsNotNone(res_boca)
+        self.assertEqual(res_boca[1], "Boca Juniors")
 
     def test_channel_split_afa_vs_international(self):
         self.assertTrue(sm.channel_accepts(17, "ARG: FANATIZ PPV 1 | Boca vs River"))
@@ -113,6 +143,40 @@ class TestSyncMatchFiltersAndScoring(unittest.TestCase):
             "ViX HD",
         )
         self.assertEqual(name2, "⚽ River Plate Vs. Racing Club (ViX HD)")
+
+        name3 = sm.clean_channel_name(
+            "US (ESPN+ 118) | Soccer: River Plate vs. Racing Club (River Plate vs. Racing Club) (2026-10-27 16:25:10)",
+            "River Plate",
+            "ESPN+",
+        )
+        self.assertEqual(name3, "⚽ River Plate Vs. Racing Club (ESPN+)")
+
+    def test_standby_mode_assigns_standby_stream_instead_of_leaving_stale_event(self):
+        from unittest.mock import patch
+
+        fake_account = SimpleNamespace(id=4, name="World 8K")
+        standby_17 = make_stream("- NO EVENT STREAMING - | ARG: FANATIZ PPV 1", stream_id=145679)
+        standby_18 = make_stream("NO EVENT STREAMING | ES: VIX PPV 1", stream_id=108241)
+
+        def fake_resolve(acc, ch):
+            return standby_17 if ch == 17 else standby_18
+
+        applied = []
+
+        def fake_apply(ch, stream, name, dry_run=False, log=print):
+            applied.append((ch, stream.id if stream else None, name))
+            return True
+
+        with patch.object(sm, "get_active_account", return_value=fake_account), \
+             patch.object(sm, "find_candidates", return_value=[]), \
+             patch.object(sm, "resolve_standby_stream", side_effect=fake_resolve), \
+             patch.object(sm, "apply_channel", side_effect=fake_apply):
+            sm.sync_event_channels(team="auto", channels=(17, 18), dry_run=True, log=lambda *_: None)
+
+        self.assertEqual(applied, [
+            (17, 145679, "AFA Play (Fanatiz / Liga Arg)"),
+            (18, 108241, "ViX PPV / Internacional"),
+        ])
 
 
 if __name__ == "__main__":
