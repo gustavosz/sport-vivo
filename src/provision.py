@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-scripts/provision.py
---------------------
+src/provision.py
+----------------
 Script idempotente de aprovisionamiento para Dispatcharr en Sport-Vivo.
 Configura o actualiza:
   1. Superusuario administrador (Web UI)

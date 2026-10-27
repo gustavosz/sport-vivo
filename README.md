@@ -142,20 +142,55 @@ El script se encargará automáticamente de:
 
 ---
 
+## 📂 Estructura del Proyecto
+
+```text
+sport-vivo/
+├── src/                        # Código fuente Python (ejecutado en el entorno de Dispatcharr)
+│   ├── __init__.py
+│   ├── stream_daemon.py        # Daemon de monitoreo de bitrate en vivo y failover
+│   ├── sync_match.py           # Motor de detección y sincronización de partidos (River/Boca)
+│   ├── provision.py            # Aprovisionamiento idempotente de canales, usuarios y EPG
+│   └── evaluate_provider.py    # Auditoría de calidad y ranking histórico de proveedores
+├── scripts/                    # Scripts operativos de Shell (Bash)
+│   ├── start.sh                # Inicio completo del stack y provisión
+│   ├── stop.sh                 # Apagado limpio del daemon y contenedores
+│   ├── daemon.sh               # Gestor del ciclo de vida y watchdog del daemon
+│   ├── daily_sync.sh           # Sincronización diaria de lista M3U y salud de cuenta
+│   ├── setup_cron.sh           # Instalación de tareas programadas (cron + watchdog)
+│   └── validate_ip.sh          # Detección automática de IP LAN en macOS
+├── tests/                      # Suite de tests unitarios (unittest / pytest)
+│   ├── __init__.py
+│   ├── test_sync_match.py      # Tests de zonas horarias, filtros, fechas y nombres
+│   └── test_stream_daemon.py   # Tests de histéresis de bitrate, cooldown y selección de señales
+├── data/                       # Volumen persistente de Docker (PostgreSQL, M3U, EPG, logos; ignorado en Git)
+├── logs/                       # Logs rotativos y archivos de estado en vivo (ignorado en Git)
+├── docker-compose.yml          # Definición del servicio Dispatcharr y volúmenes
+├── Makefile                    # Atajos de operación y pruebas
+└── pyproject.toml              # Configuración estándar del proyecto Python
+```
+
+---
+
 ## 🛠️ Comandos Disponibles
 
 El proyecto incluye un `Makefile` para facilitar la administración:
 
 | Comando | Descripción |
 | :--- | :--- |
-| `make up` | Inicia el stack y ejecuta la sincronización de canales y EPG |
-| `make down` | Detiene y remueve los contenedores limpiamente |
+| `make up` | Inicia el stack, aprovisiona canales/EPG y levanta el Stream Watcher Daemon |
+| `make down` | Detiene el daemon y los contenedores limpiamente |
 | `make restart` | Reinicia todo el servicio |
 | `make logs` | Visualiza los logs en tiempo real de Dispatcharr |
 | `make status` | Muestra el estado del contenedor |
-| `make provision` | Vuelve a sincronizar canales, failover y EPG sin reiniciar |
+| `make daemon-status` | Muestra el estado del Stream Watcher Daemon y sus últimos logs |
+| `make daemon-logs` | Visualiza los logs en vivo del Stream Watcher Daemon |
+| `make daemon-restart` | Reinicia el Stream Watcher Daemon |
+| `make provision` | Vuelve a sincronizar canales y EPG sin reiniciar el contenedor |
+| `make match` | Fuerza la sincronización inmediata de partidos en Canal 17 (AFA Play) y 18 (Internacional) |
 | `make audit` | Audita la calidad en vivo (TTFB, bitrate, cortes) y calcula score |
 | `make ranking` | Muestra el ranking histórico y el top de proveedores evaluados |
+| `make test` | Ejecuta la suite de tests unitarios (`tests/`) |
 
 ---
 

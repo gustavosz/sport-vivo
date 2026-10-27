@@ -94,7 +94,7 @@ docker exec -i \
     -e BACKUP_PROVIDER_MAX_STREAMS="$BACKUP_PROVIDER_MAX_STREAMS" \
     -e EPG_NAME="$EPG_NAME" \
     -e EPG_URL="$EPG_URL" \
-    dispatcharr su dispatch -c "cd /app && python -" < "$SCRIPT_DIR/provision.py"
+    dispatcharr su dispatch -c "cd /app && python -" < "$ROOT_DIR/src/provision.py"
 
 # 5b. Iniciar o reiniciar Sport-Vivo Stream Watcher Daemon
 echo "🤖 Iniciando Sport-Vivo Stream Watcher Daemon..."

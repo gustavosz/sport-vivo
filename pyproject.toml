@@ -1,0 +1,16 @@
+[project]
+name = "sport-vivo"
+version = "1.0.0"
+description = "Proxy IPTV deportivo inteligente con failover en vivo, auto-sincronización de partidos y EPG sobre Dispatcharr"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "/app"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+src = ["src", "tests"]

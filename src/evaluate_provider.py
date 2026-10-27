@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-scripts/evaluate_provider.py
-----------------------------
+src/evaluate_provider.py
+------------------------
 Herramienta de Auditoría de Calidad y Ranking de Proveedores IPTV para Sport-Vivo.
 
 Evalúa objetivamente:

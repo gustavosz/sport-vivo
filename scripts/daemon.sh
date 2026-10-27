@@ -12,7 +12,7 @@ export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONTAINER="dispatcharr"
-DAEMON_PATH="/app/custom_scripts/stream_daemon.py"
+DAEMON_PATH="/app/src/stream_daemon.py"
 PATTERN='[s]tream_daemon.py'   # Los corchetes evitan que pgrep/pkill se encuentren a sí mismos
 LOG_FILE="$ROOT_DIR/logs/stream_daemon.log"
 

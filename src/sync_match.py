@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-scripts/sync_match.py
----------------------
+src/sync_match.py
+-----------------
 Sincronización de partidos de River Plate y Boca Juniors en los canales de eventos
 de Sport-Vivo / Dispatcharr:
 
@@ -13,7 +13,7 @@ Los canales 01 (ESPN Premium) y 02 (TNT Sports) NUNCA se modifican desde aquí.
 Es la única fuente de verdad de la lógica de partidos y se usa de dos formas:
   - CLI  (make match / river / boca, daily_sync.sh):
         python - --team auto|river|boca [--channel 0|17|18] [--dry-run]
-  - Módulo: scripts/stream_daemon.py importa sync_event_channels() y los helpers.
+  - Módulo: src/stream_daemon.py importa sync_event_channels() y los helpers.
 
 Solo escribe en la base de datos cuando el stream o el nombre del canal cambian.
 """

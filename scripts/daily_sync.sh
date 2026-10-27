@@ -112,7 +112,7 @@ fi
 log "⚽ 4. Buscando partidos de Boca Juniors o River Plate (Canal 17 AFA Play / Canal 18 Internacional)..."
 docker exec -i \
     -e PROVIDER_USERNAME="$PROVIDER_USERNAME" \
-    dispatcharr su dispatch -c "cd /app && python - --team auto" < "$ROOT_DIR/scripts/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
+    dispatcharr su dispatch -c "cd /app && python - --team auto" < "$ROOT_DIR/src/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
 
 # 6. Asegurar que el Stream Watcher Daemon esté corriendo
 log "🤖 5. Verificando Stream Watcher Daemon..."

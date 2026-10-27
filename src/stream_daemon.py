@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-scripts/stream_daemon.py
-------------------------
+src/stream_daemon.py
+--------------------
 SPORT-VIVO: Stream Watcher Daemon.
 
 1. Vigilancia de pantalla negra / stream zombi (cero conexiones extra al proveedor):
@@ -55,7 +55,7 @@ import redis
 # -----------------------------------------------------------------------------
 # Logging (con rotación; sin duplicar líneas cuando stdout se redirige al mismo archivo)
 # -----------------------------------------------------------------------------
-LOG_DIR = "/app/custom_logs" if os.path.isdir("/app/custom_logs") else "/tmp"
+LOG_DIR = os.environ.get("SPORT_VIVO_LOG_DIR") or ("/app/custom_logs" if os.path.isdir("/app/custom_logs") else "/tmp")
 LOG_FILE = os.path.join(LOG_DIR, "stream_daemon.log")
 LOCK_FILE = os.path.join(LOG_DIR, "stream_daemon.lock")
 PID_FILE = os.path.join(LOG_DIR, "stream_daemon.pid")  # Solo informativo

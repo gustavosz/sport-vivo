@@ -1,7 +1,7 @@
 # ==============================================================================
 # SPORT-VIVO: Makefile de Operaciones
 # ==============================================================================
-.PHONY: help up down restart logs status provision audit ranking match river boca validate-ip daily-sync setup-cron daemon-status daemon-logs daemon-restart
+.PHONY: help up down restart logs status provision audit ranking match river boca validate-ip daily-sync setup-cron daemon-status daemon-logs daemon-restart test
 
 help:
 	@echo "⚽ Comandos disponibles para Sport-Vivo:"
@@ -22,6 +22,7 @@ help:
 	@echo "  make setup-cron     - Instalar tarea programada diaria (cron) en macOS"
 	@echo "  make audit          - Auditar calidad del proveedor en vivo y calcular score"
 	@echo "  make ranking        - Ver tabla histórica y top de proveedores evaluados"
+	@echo "  make test           - Ejecutar suite de tests unitarios (tests/)"
 
 up:
 	@chmod +x scripts/*.sh
@@ -61,38 +62,38 @@ provision:
 		-e BACKUP_PROVIDER_MAX_STREAMS="$$BACKUP_PROVIDER_MAX_STREAMS" \
 		-e EPG_NAME="$$EPG_NAME" \
 		-e EPG_URL="$$EPG_URL" \
-		dispatcharr su dispatch -c "cd /app && python -" < scripts/provision.py
+		dispatcharr su dispatch -c "cd /app && python -" < src/provision.py
 
 audit:
 	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
 	@set -a; . ./.env; set +a; \
 	SELLER="$${SELLER:-$$PROVIDER_SELLER}"; \
 	docker exec -i \
-		dispatcharr su - dispatch -c "cd /app && EVAL_MODE=audit CLIENT_USERNAME=$$CLIENT_USERNAME CLIENT_PASSWORD=$$CLIENT_PASSWORD DISPATCHARR_PORT=$${DISPATCHARR_PORT:-9191} PROVIDER_NAME=\"$$PROVIDER_NAME\" PROVIDER_USERNAME=\"$$PROVIDER_USERNAME\" PROVIDER_SELLER=\"$$SELLER\" python -" < scripts/evaluate_provider.py
+		dispatcharr su - dispatch -c "cd /app && EVAL_MODE=audit CLIENT_USERNAME=$$CLIENT_USERNAME CLIENT_PASSWORD=$$CLIENT_PASSWORD DISPATCHARR_PORT=$${DISPATCHARR_PORT:-9191} PROVIDER_NAME=\"$$PROVIDER_NAME\" PROVIDER_USERNAME=\"$$PROVIDER_USERNAME\" PROVIDER_SELLER=\"$$SELLER\" python -" < src/evaluate_provider.py
 
 ranking:
-	@docker exec -i dispatcharr su - dispatch -c "cd /app && EVAL_MODE=ranking python -" < scripts/evaluate_provider.py
+	@docker exec -i dispatcharr su - dispatch -c "cd /app && EVAL_MODE=ranking python -" < src/evaluate_provider.py
 
 match:
 	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
 	@set -a; . ./.env; set +a; \
 	docker exec -i \
 		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
-		dispatcharr su dispatch -c "cd /app && python - --team $${TEAM:-auto}" < scripts/sync_match.py
+		dispatcharr su dispatch -c "cd /app && python - --team $${TEAM:-auto}" < src/sync_match.py
 
 river:
 	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
 	@set -a; . ./.env; set +a; \
 	docker exec -i \
 		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
-		dispatcharr su dispatch -c "cd /app && python - --team river" < scripts/sync_match.py
+		dispatcharr su dispatch -c "cd /app && python - --team river" < src/sync_match.py
 
 boca:
 	@test -f .env || { echo "❌ Falta archivo .env"; exit 1; }
 	@set -a; . ./.env; set +a; \
 	docker exec -i \
 		-e PROVIDER_USERNAME="$$PROVIDER_USERNAME" \
-		dispatcharr su dispatch -c "cd /app && python - --team boca" < scripts/sync_match.py
+		dispatcharr su dispatch -c "cd /app && python - --team boca" < src/sync_match.py
 
 validate-ip:
 	@chmod +x scripts/*.sh
@@ -116,4 +117,8 @@ daemon-restart:
 	@echo "🔄 Reiniciando Sport-Vivo Stream Watcher Daemon..."
 	@bash scripts/daemon.sh restart
 	@bash scripts/daemon.sh status
+
+test:
+	@echo "🧪 Ejecutando suite de tests unitarios (tests/)..."
+	@docker exec -u dispatch -w /app -e PYTHONDONTWRITEBYTECODE=1 -e SPORT_VIVO_LOG_DIR=/tmp dispatcharr python3 -m unittest discover -s /app/tests -p "test_*.py" -v
 
