@@ -33,6 +33,8 @@ DISPATCHARR_PORT="${DISPATCHARR_PORT:-9191}"
 HOST_IP="${HOST_IP:-127.0.0.1}"
 DOCKER_NETWORK="${DOCKER_NETWORK:-media-net}"
 
+mkdir -p "$ROOT_DIR/logs"
+
 # 2. Asegurar que la red externa de Docker exista (para compartir con Jellyfin)
 if ! docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1; then
     echo "🌐 Creando red externa de Docker: $DOCKER_NETWORK..."
@@ -68,6 +70,9 @@ else
     echo "✅ Dispatcharr en línea y saludable (HTTP $HTTP_CODE)."
 fi
 
+# 4b. Asegurar compatibilidad de librerías multimedia (librist para ffmpeg)
+docker exec dispatcharr bash -c 'cp -a /usr/local/lib/librist.so.4* /usr/lib/aarch64-linux-gnu/ 2>/dev/null && ldconfig 2>/dev/null || true'
+
 # 5. Ejecutar aprovisionamiento / sincronización automática
 echo "🔄 Sincronizando configuración, canales y EPG..."
 docker exec -i \
@@ -90,6 +95,10 @@ docker exec -i \
     -e EPG_NAME="$EPG_NAME" \
     -e EPG_URL="$EPG_URL" \
     dispatcharr su dispatch -c "cd /app && python -" < "$SCRIPT_DIR/provision.py"
+
+# 5b. Iniciar o reiniciar Sport-Vivo Stream Watcher Daemon
+echo "🤖 Iniciando Sport-Vivo Stream Watcher Daemon..."
+bash "$SCRIPT_DIR/daemon.sh" restart || echo "⚠️ Advertencia: Stream Watcher Daemon no inició correctamente. Revisa logs/stream_daemon.log."
 
 # 6. Banner informativo final
 echo ""

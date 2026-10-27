@@ -424,7 +424,22 @@ channels_config = [
     },
     {
         "number": 17,
-        "name": "ViX",
+        "name": "AFA Play (Fanatiz / Liga Arg)",
+        # Dinámico: el Stream Watcher Daemon (sync_match.py) asigna el partido del día.
+        "dynamic": True,
+        "aliases": [
+            "Fanatiz",
+            "AFA Play",
+            "LPF",
+        ],
+        "epg_tvg_id": None,
+        "epg_source_type": None,
+    },
+    {
+        "number": 18,
+        "name": "ViX PPV / Internacional",
+        # Dinámico: el Stream Watcher Daemon (sync_match.py) asigna el partido del día.
+        "dynamic": True,
         "aliases": [
             "ES: VIX PPV",
             "MX: VIX PPV",
@@ -460,6 +475,16 @@ for cfg in channels_config:
             "hidden_from_output": False
         }
     )
+    has_stream = ChannelStream.objects.filter(channel=channel).exists()
+    if cfg.get("dynamic") and not ch_created and has_stream:
+        # Canal administrado por el daemon: no pisar el partido ni el nombre asignados.
+        channel.channel_group = group
+        channel.stream_profile = stream_profile_fast
+        channel.hidden_from_output = False
+        channel.save()
+        print(f"  [Ch {int(channel.channel_number):02d}] {channel.name:<18} : (dinámico, administrado por el daemon)")
+        continue
+
     if not ch_created:
         channel.name = cfg["name"]
         channel.channel_group = group

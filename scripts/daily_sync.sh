@@ -4,6 +4,9 @@
 # ==============================================================================
 set -e
 
+# Asegurar PATH completo para entornos no interactivos (cron de macOS)
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
@@ -105,11 +108,15 @@ else
     log "ℹ️ 3. Omitiendo descarga M3U porque la cuenta está en estado '$STATUS'."
 fi
 
-# 5. Sincronizar automáticamente partido de River o Boca en Canal 17 (ViX)
-log "⚽ 4. Buscando partidos de Boca Juniors o River Plate para sincronizar en Canal 17 (ViX)..."
+# 5. Sincronizar partidos de River o Boca en Canal 17 (AFA Play) y Canal 18 (Internacional)
+log "⚽ 4. Buscando partidos de Boca Juniors o River Plate (Canal 17 AFA Play / Canal 18 Internacional)..."
 docker exec -i \
     -e PROVIDER_USERNAME="$PROVIDER_USERNAME" \
-    dispatcharr su dispatch -c "cd /app && python - --team auto --channel 17" < "$ROOT_DIR/scripts/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
+    dispatcharr su dispatch -c "cd /app && python - --team auto" < "$ROOT_DIR/scripts/sync_match.py" >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia en sync_match."
+
+# 6. Asegurar que el Stream Watcher Daemon esté corriendo
+log "🤖 5. Verificando Stream Watcher Daemon..."
+bash "$SCRIPT_DIR/daemon.sh" ensure >> "$LOG_FILE" 2>&1 || log "⚠️ Advertencia al verificar el daemon."
 
 log "================================================================="
 log "✅ Sincronización diaria completada con éxito."

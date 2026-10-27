@@ -13,6 +13,11 @@ echo "============================================================"
 echo "🛑 Deteniendo Stack Sport-Vivo (Dispatcharr)"
 echo "============================================================"
 
+if docker ps --format '{{.Names}}' | grep -q "^dispatcharr$"; then
+    echo "🤖 Deteniendo Sport-Vivo Stream Watcher Daemon..."
+    bash "$SCRIPT_DIR/daemon.sh" stop || true
+fi
+
 docker compose down
 
 echo "✅ Servicios detenidos correctamente. Los datos persisten en ./data."

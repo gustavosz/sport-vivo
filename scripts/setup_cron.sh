@@ -12,20 +12,31 @@ LOG_FILE="$ROOT_DIR/logs/cron.log"
 mkdir -p "$ROOT_DIR/logs"
 
 CRON_CMD="0 12,18 * * * /bin/bash $SYNC_SCRIPT >> $LOG_FILE 2>&1"
+WATCHDOG_SCRIPT="$SCRIPT_DIR/daemon.sh"
+WATCHDOG_CMD="*/5 * * * * /bin/bash $WATCHDOG_SCRIPT ensure >> $LOG_FILE 2>&1"
 
-echo "⏰ Configurando Cron Job diario para Sport-Vivo..."
+echo "⏰ Configurando Cron Jobs para Sport-Vivo..."
 
 # Obtener crontab actual sin fallar si está vacío
 CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+NEW_CRON="$CURRENT_CRON"
 
 if echo "$CURRENT_CRON" | grep -Fq "$SYNC_SCRIPT"; then
-    echo "✅ El cron job ya está instalado en el sistema:"
-    echo "$CURRENT_CRON" | grep -F "$SYNC_SCRIPT"
+    echo "✅ Sincronización diaria ya instalada."
 else
-    # Agregar tarea al crontab
-    (echo "$CURRENT_CRON"; echo "# Sport-Vivo Auto Sync (12:00 y 18:00 hs)"; echo "$CRON_CMD") | crontab -
-    echo "✅ Cron job instalado con éxito en crontab:"
-    echo "   $CRON_CMD"
+    NEW_CRON=$(printf '%s\n%s\n%s' "$NEW_CRON" "# Sport-Vivo Auto Sync (12:00 y 18:00 hs)" "$CRON_CMD")
+    echo "✅ Sincronización diaria agregada: $CRON_CMD"
+fi
+
+if echo "$CURRENT_CRON" | grep -Fq "$WATCHDOG_SCRIPT ensure"; then
+    echo "✅ Watchdog del daemon ya instalado."
+else
+    NEW_CRON=$(printf '%s\n%s\n%s' "$NEW_CRON" "# Sport-Vivo Watchdog del Stream Daemon (cada 5 min)" "$WATCHDOG_CMD")
+    echo "✅ Watchdog del daemon agregado: $WATCHDOG_CMD"
+fi
+
+if [ "$NEW_CRON" != "$CURRENT_CRON" ]; then
+    echo "$NEW_CRON" | crontab -
 fi
 
 echo ""

@@ -25,6 +25,9 @@ __pycache__/
 env/
 venv/
 
-# Logs y temporales
+# Logs y temporales de ejecución
+logs/
 *.log
 *.tmp
+*.pid
+*.lock

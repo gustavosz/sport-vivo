@@ -1,24 +1,27 @@
 # ==============================================================================
 # SPORT-VIVO: Makefile de Operaciones
 # ==============================================================================
-.PHONY: help up down restart logs status provision audit ranking match river boca validate-ip daily-sync setup-cron
+.PHONY: help up down restart logs status provision audit ranking match river boca validate-ip daily-sync setup-cron daemon-status daemon-logs daemon-restart
 
 help:
 	@echo "⚽ Comandos disponibles para Sport-Vivo:"
-	@echo "  make up          - Iniciar y aprovisionar el stack (Dispatcharr + Canales + EPG)"
-	@echo "  make down        - Detener el stack limpiamente"
-	@echo "  make restart     - Reiniciar el stack"
-	@echo "  make logs        - Ver logs en vivo de Dispatcharr"
-	@echo "  make status      - Ver estado del contenedor y servicios"
-	@echo "  make provision   - Re-ejecutar aprovisionamiento de canales y EPG"
-	@echo "  make match       - Auto-sincronizar partido de River o Boca en el Canal 17 (ViX)"
-	@echo "  make river       - Forzar sincronización de River Plate en el Canal 17 (ViX)"
-	@echo "  make boca        - Forzar sincronización de Boca Juniors en el Canal 17 (ViX)"
-	@echo "  make validate-ip - Verificar y sincronizar IP local de la Mac en .env"
-	@echo "  make daily-sync  - Ejecutar ciclo diario de sincronización y salud de cuenta"
-	@echo "  make setup-cron  - Instalar tarea programada diaria (cron) en macOS"
-	@echo "  make audit       - Auditar calidad del proveedor en vivo y calcular score"
-	@echo "  make ranking     - Ver tabla histórica y top de proveedores evaluados"
+	@echo "  make up             - Iniciar y aprovisionar el stack + Stream Watcher Daemon"
+	@echo "  make down           - Detener el stack limpiamente"
+	@echo "  make restart        - Reiniciar el stack"
+	@echo "  make logs           - Ver logs en vivo de Dispatcharr"
+	@echo "  make status         - Ver estado del contenedor y servicios"
+	@echo "  make daemon-status  - Ver estado del Stream Watcher Daemon (bitrate, canal activo)"
+	@echo "  make daemon-logs    - Ver logs en vivo del Stream Watcher Daemon"
+	@echo "  make daemon-restart - Reiniciar el Stream Watcher Daemon"
+	@echo "  make provision      - Re-ejecutar aprovisionamiento de canales y EPG"
+	@echo "  make match          - Forzar ya la sincronización de partidos (Canal 17 AFA Play / 18 Internacional)"
+	@echo "  make river          - Igual que match, solo River Plate"
+	@echo "  make boca           - Igual que match, solo Boca Juniors"
+	@echo "  make validate-ip    - Verificar y sincronizar IP local de la Mac en .env"
+	@echo "  make daily-sync     - Ejecutar ciclo diario de sincronización y salud de cuenta"
+	@echo "  make setup-cron     - Instalar tarea programada diaria (cron) en macOS"
+	@echo "  make audit          - Auditar calidad del proveedor en vivo y calcular score"
+	@echo "  make ranking        - Ver tabla histórica y top de proveedores evaluados"
 
 up:
 	@chmod +x scripts/*.sh
@@ -102,4 +105,15 @@ daily-sync:
 setup-cron:
 	@chmod +x scripts/*.sh
 	@./scripts/setup_cron.sh
+
+daemon-status:
+	@bash scripts/daemon.sh status
+
+daemon-logs:
+	@tail -f -n 50 logs/stream_daemon.log
+
+daemon-restart:
+	@echo "🔄 Reiniciando Sport-Vivo Stream Watcher Daemon..."
+	@bash scripts/daemon.sh restart
+	@bash scripts/daemon.sh status
 

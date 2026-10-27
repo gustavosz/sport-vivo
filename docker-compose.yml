@@ -7,6 +7,8 @@ services:
       - "${DISPATCHARR_PORT:-9191}:9191"
     volumes:
       - ${DISPATCHARR_DATA_DIR:-./data}:/data
+      - ./scripts:/app/custom_scripts:ro
+      - ./logs:/app/custom_logs
     environment:
       - DISPATCHARR_ENV=aio
       - REDIS_HOST=localhost
